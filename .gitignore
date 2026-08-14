@@ -11,6 +11,9 @@ Thumbs.db
 # ── Build output ──────────────────────────────────────────
 easy-text.exe
 *.exe
+# 发布产物显式纳入版本控制：主程序 + NSIS 安装包
+!build/bin/EasyText.exe
+!build/bin/EasyText-amd64-installer.exe
 
 # ── Go ────────────────────────────────────────────────────
 # Wails builds produce these, keep source only
