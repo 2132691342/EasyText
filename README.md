@@ -6,6 +6,15 @@
 
 ![Windows 10/11](https://img.shields.io/badge/platform-Windows%2010%2F11-blue) ![Wails v2.12](https://img.shields.io/badge/Wails-v2.12-green) ![Go 1.24](https://img.shields.io/badge/Go-1.24-00ADD8) ![Vue 3](https://img.shields.io/badge/Vue-3.4-42b883) ![License MIT](https://img.shields.io/badge/license-MIT-yellow)
 
+## 下载安装
+
+安装包（NSIS，~11MB）已随仓库发布，可直接使用：
+
+- **安装包**：[`build/bin/EasyText-amd64-installer.exe`](build/bin/EasyText-amd64-installer.exe) — 双击安装，可选注册为常见文本类型的编辑器
+- **免安装单文件**：[`build/bin/EasyText.exe`](build/bin/EasyText.exe) — 绿色运行，零依赖
+
+> 安装包需要 Windows 10 1809+ / 11（系统已内置 WebView2）。
+
 ## 核心特性
 
 - **轻量原生**：系统 WebView2 渲染，单 EXE ~24MB，零依赖，零插件
