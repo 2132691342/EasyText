@@ -1,0 +1,433 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Base styles */
+html {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #333;
+  background-color: #fff;
+  overflow: hidden;
+  /* WebView2 默认 UA stylesheet 会设置 -webkit-user-drag: element，
+     这会劫持鼠标拖拽事件，导致 CodeMirror 无法正常进行文本选择。
+     修复方案：全局禁用 user-drag */
+  -webkit-user-drag: none;
+}
+
+html.dark body {
+  color: #e0e0e0;
+  background-color: #1e1e1e;
+}
+
+#app {
+  height: 100vh;
+  width: 100vw;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Editor specific styles */
+.cm-editor {
+  height: 100%;
+  width: 100%;
+  min-height: 100px;
+  font-size: var(--editor-font-size, 14px);
+  font-family: var(--editor-font-family, 'Consolas', 'Monaco', 'Courier New', monospace);
+  /* WebView2 fix: -webkit-user-drag: element 会破坏文本选择 */
+  -webkit-user-drag: none;
+}
+
+.cm-editor .cm-scroller {
+  overflow: auto;
+}
+
+.cm-editor .cm-content {
+  padding: 8px 0;
+  background: transparent !important;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  /* WebView2 fix: 必须显式设置 none 才能正常文本选择 */
+  -webkit-user-drag: none !important;
+}
+
+.cm-editor .cm-line {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+}
+
+/* =====================================
+   CodeMirror selection highlight
+   Use native ::selection (no drawSelection) to avoid
+   WebView2's "only whole-line selection" bug.
+   CM's drawSelection creates a separate overlay layer
+   that has known partial-line rendering issues in WebView2.
+   ===================================== */
+.cm-editor .cm-content ::selection {
+  background-color: #a8cfff;
+  color: inherit;
+}
+
+html.dark .cm-editor .cm-content ::selection {
+  background-color: #264f78;
+  color: inherit;
+}
+
+.cm-editor.cm-focused {
+  outline: none;
+}
+
+/* Global text selection highlight */
+::selection {
+  background: #a8cfff;
+  color: inherit;
+}
+
+::-moz-selection {
+  background: #a8cfff;
+  color: inherit;
+}
+
+html.dark ::selection {
+  background: #264f78;
+}
+
+html.dark ::-moz-selection {
+  background: #264f78;
+}
+
+/* Ensure all text content areas allow selection */
+[contenteditable="true"],
+input[type="text"],
+textarea,
+.markdown-body,
+.select-text,
+.docx-render-container {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+html.dark ::-webkit-scrollbar-track {
+  background: #2d2d2d;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 5px;
+}
+
+html.dark ::-webkit-scrollbar-thumb {
+  background: #424242;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* Tab styles */
+.tab-close-btn {
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+.tab-close-btn:hover {
+  opacity: 1;
+}
+
+/* File tree styles */
+.file-tree-item {
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s;
+}
+
+.file-tree-item:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+html.dark .file-tree-item:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.file-tree-item.selected {
+  background-color: rgba(59, 130, 246, 0.1);
+}
+
+html.dark .file-tree-item.selected {
+  background-color: rgba(59, 130, 246, 0.2);
+}
+
+/* Status bar */
+.status-bar {
+  font-size: 12px;
+  padding: 4px 8px;
+  background-color: #f0f0f0;
+  border-top: 1px solid #ddd;
+}
+
+html.dark .status-bar {
+  background-color: #252526;
+  border-top: 1px solid #404040;
+}
+
+/* Menu styles */
+.menu-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.menu-item:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+html.dark .menu-item:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Toolbar */
+.toolbar {
+  background-color: #fff;
+  border-bottom: 1px solid #e5e5e5;
+}
+
+html.dark .toolbar {
+  background-color: #252526;
+  border-bottom: 1px solid #404040;
+}
+
+/* Modal backdrop */
+.modal-backdrop {
+  background-color: rgba(0, 0, 0, 0.5);
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+/* Diff view styles */
+.diff-added {
+  background-color: rgba(0, 255, 0, 0.1);
+}
+
+.diff-removed {
+  background-color: rgba(255, 0, 0, 0.1);
+}
+
+html.dark .diff-added {
+  background-color: rgba(0, 200, 0, 0.2);
+}
+
+html.dark .diff-removed {
+  background-color: rgba(200, 0, 0, 0.2);
+}
+
+/* Loading spinner */
+.spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Focus styles */
+button:focus,
+input:focus,
+select:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+html.dark button:focus,
+html.dark input:focus,
+html.dark select:focus {
+  outline-color: #60a5fa;
+}
+
+/* Tailwind utilities - select-text */
+.select-text {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
+/* Disable text selection in UI elements */
+.no-select {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Flex utilities */
+.flex-1 {
+  flex: 1 1 0%;
+}
+
+.flex-auto {
+  flex: 1 1 auto;
+}
+
+/* Resize handle */
+.resize-handle {
+  width: 4px;
+  cursor: col-resize;
+  background-color: transparent;
+  transition: background-color 0.2s;
+}
+
+.resize-handle:hover {
+  background-color: #3b82f6;
+}
+
+/* Context Menu */
+.context-menu {
+  position: fixed;
+  z-index: 9999;
+  min-width: 180px;
+  padding: 4px 0;
+  background-color: #fff;
+  border: 1px solid #e5e5e5;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 4px rgba(0, 0, 0, 0.08);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+html.dark .context-menu {
+  background-color: #2d2d2d;
+  border-color: #404040;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  color: #333;
+  transition: background-color 0.1s;
+}
+
+html.dark .context-menu-item {
+  color: #d4d4d4;
+}
+
+.context-menu-item:hover {
+  background-color: rgba(0, 0, 0, 0.06);
+}
+
+html.dark .context-menu-item:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.context-menu-item.danger {
+  color: #dc2626;
+}
+
+html.dark .context-menu-item.danger {
+  color: #f87171;
+}
+
+.context-menu-item.danger:hover {
+  background-color: rgba(220, 38, 38, 0.08);
+}
+
+html.dark .context-menu-item.danger:hover {
+  background-color: rgba(248, 113, 113, 0.12);
+}
+
+.context-menu-divider {
+  height: 1px;
+  margin: 4px 8px;
+  background-color: #e5e5e5;
+}
+
+html.dark .context-menu-divider {
+  background-color: #404040;
+}
+
+/* --- Element Plus dark mode overrides --- */
+html.dark {
+  --el-bg-color: #1e1e1e;
+  --el-bg-color-overlay: #252526;
+  --el-text-color-primary: #e0e0e0;
+  --el-text-color-regular: #d4d4d4;
+  --el-text-color-secondary: #9ca3af;
+  --el-border-color: #404040;
+  --el-border-color-light: #374151;
+  --el-bg-color-page: #1e1e1e;
+  --el-fill-color: #3c3c3c;
+  --el-fill-color-light: #333;
+  --el-fill-color-blank: #252526;
+}
+
+html.dark .el-dialog {
+  --el-dialog-bg-color: #252526;
+}
+
+html.dark .el-dropdown-menu {
+  background-color: #2d2d2d;
+}
+
+html.dark .el-dropdown-menu__item:not(.is-disabled):hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+html.dark .el-button--default.is-text {
+  color: #d4d4d4;
+}
+
+html.dark .el-switch__label--right {
+  color: #d4d4d4;
+}
+
+html.dark .el-input__wrapper {
+  background-color: #3c3c3c;
+  box-shadow: 0 0 0 1px #404040 inset;
+}
+
+html.dark .el-select .el-input__wrapper {
+  background-color: #3c3c3c;
+}
+
+html.dark .el-input-number .el-input__wrapper {
+  background-color: #3c3c3c;
+}
+
+html.dark .el-popper.is-dark {
+  background-color: #3c3c3c;
+  color: #e0e0e0;
+}

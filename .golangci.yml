@@ -1,0 +1,58 @@
+# golangci-lint 配置
+# 安装: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+# 运行: golangci-lint run ./...
+#
+# 项目背景: Wails + Vue 桌面应用，Go 1.24，GORM + glebarez/sqlite。
+# 重点 lint 维度: 错误处理、并发安全、类型一致性、未使用导出符号。
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  disable-all: true
+  enable:
+    - errcheck     # 捕获未处理的 error 返回值
+    - govet        # 标准 vet 检查
+    - staticcheck  # SA* 系列（死代码、未使用导出等）
+    - unused       # 未使用的局部变量/参数/类型
+    - gosec        # 安全漏洞（G404 等弱随机、G107 等 URL 拼接）
+    - gofmt        # 格式
+    - goimports    # import 排序
+    - misspell     # 拼写
+    - revive       # golint 替代，更严格
+    - ineffassign  # 无效赋值
+
+linters-settings:
+  errcheck:
+    # 标记 Wails runtime 调用允许忽略错误（如 runtime.EventsEmit）
+    ignore: fmt.Stringer,github.com/wailsapp/wails/v2/pkg/runtime.EventsEmit
+  revive:
+    rules:
+      - name: exported
+        disabled: false
+      - name: package-comments
+      - name: var-naming
+      - name: error-strings
+      - name: error-naming
+      - name: error-return
+
+issues:
+  exclude-rules:
+    # 主入口与 Wails 启动代码允许 panic（fail-fast 设计）
+    - path: app\.go|main\.go
+      linters:
+        - revive
+      text: "var-declaration|unhandled-error"
+    # 测试文件允许 t.Errorf / t.Fatalf 不返回 error
+    - path: _test\.go
+      linters:
+        - errcheck
+    # Wails App 结构体绑定方法用 ctx 字段，revive 可能误报
+    - path: handler\.go
+      text: "struct-field"
+      linters:
+        - revive
+
+  max-issues-per-linter: 50
+  max-same-issues: 5

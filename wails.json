@@ -1,0 +1,21 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "EasyText",
+  "outputfilename": "EasyText",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "EasyText",
+    "email": ""
+  },
+  "info": {
+    "companyName": "EasyText",
+    "productName": "EasyText",
+    "productVersion": "2.0.0",
+    "description": "轻量级开发者桌面编辑器",
+    "copyright": "MIT License",
+    "comments": "轻量级桌面文档编辑工具"
+  }
+}
