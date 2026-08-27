@@ -73,12 +73,12 @@ html.dark body {
    that has known partial-line rendering issues in WebView2.
    ===================================== */
 .cm-editor .cm-content ::selection {
-  background-color: #a8cfff;
+  background-color: var(--theme-selection, #a8cfff);
   color: inherit;
 }
 
 html.dark .cm-editor .cm-content ::selection {
-  background-color: #264f78;
+  background-color: var(--theme-selection, #264f78);
   color: inherit;
 }
 

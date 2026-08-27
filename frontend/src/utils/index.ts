@@ -203,8 +203,8 @@ export function isImageExtension(ext: string): boolean {
 export function getTabViewType(ext: string): 'code' | 'image' | 'hex' | 'log' {
   const extLower = ext.toLowerCase()
   if (isImageExtension(extLower)) return 'image'
-  // 🆕 V2.0.0: 日志文件自动识别
-  if (extLower === 'log') return 'log'
+  // ★ 日志文件默认以普通代码编辑模式打开，用户可通过菜单手动切换为日志查看模式
+  //   之前自动识别为 'log' 导致 .log 文件无法编辑
   // 二进制文件（含 Office/PDF，已移除专用查看器）→ 十六进制查看
   if (isBinaryExtension(extLower)) return 'hex'
   return 'code'

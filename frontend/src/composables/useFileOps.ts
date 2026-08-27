@@ -44,6 +44,10 @@ export interface UseFileOpsOptions {
   showFileTree: { value: boolean }
   /** 持久化最后打开的目录 */
   setLastFolder: (path: string) => void
+  /** 文件保存后的回调（用于清除外部变更忽略状态） */
+  onFileSaved?: (path: string) => void
+  /** 文件打开后的回调（用于清除外部变更忽略状态） */
+  onFileOpened?: (path: string) => void
 }
 
 export function useFileOps(opts: UseFileOpsOptions) {
@@ -89,6 +93,8 @@ export function useFileOps(opts: UseFileOpsOptions) {
                 saveSession()
                 await AddRecentEntry(path, false).catch(() => {})
                 document.dispatchEvent(new CustomEvent('recent-updated'))
+                // 文件打开后清除外部变更忽略状态
+                opts.onFileOpened?.(path)
                 return
               }
             }
@@ -99,6 +105,8 @@ export function useFileOps(opts: UseFileOpsOptions) {
       await AddRecentEntry(path, false).catch(() => {})
       document.dispatchEvent(new CustomEvent('recent-updated'))
       saveSession()
+      // 文件打开后清除外部变更忽略状态
+      opts.onFileOpened?.(path)
     } catch (e: unknown) {
       // 大文件（>100MB）回退到 Hex 分页视图
       const code = (e as { code?: number; data?: { code?: number } })?.code
@@ -109,6 +117,8 @@ export function useFileOps(opts: UseFileOpsOptions) {
         ElMessage.warning('文件过大，已以二进制分页模式打开')
         saveSession()
         await AddRecentEntry(path, false).catch(() => {})
+        // 文件打开后清除外部变更忽略状态
+        opts.onFileOpened?.(path)
       } else {
         ElMessage.error('无法打开: ' + path)
       }
@@ -142,6 +152,8 @@ export function useFileOps(opts: UseFileOpsOptions) {
       ed.markTabSaved(t.id)
       // 保存成功后清理草稿
       try { await DeleteDraft(t.path) } catch { /* ignore */ }
+      // 文件保存后清除外部变更忽略状态
+      opts.onFileSaved?.(t.path)
     } catch {
       ElMessage.error('保存失败')
     }
@@ -180,7 +192,12 @@ export function useFileOps(opts: UseFileOpsOptions) {
     if (!t?.path) return
     try {
       const r = await ReadFile(t.path)
-      if (r) ed.updateTabContent(t.id, r.content)
+      if (r) {
+        ed.updateTabContent(t.id, r.content)
+        // 同步 originalContent，避免关闭时错误提示保存
+        const tab = ed.tabs.find(x => x.id === t.id)
+        if (tab) tab.originalContent = r.content
+      }
     } catch (e) {
       console.warn(e)
     }

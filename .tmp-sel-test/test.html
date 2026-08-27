@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<style>
+  body { margin: 20px; font-family: sans-serif; }
+  h3 { margin: 8px 0 4px; }
+  .editor { height: 180px; border: 1px solid #ccc; margin-bottom: 24px; }
+  /* 复刻 style.css 中的选区样式 */
+  .cm-editor .cm-content ::selection { background-color: #a8cfff; color: inherit; }
+  html.dark .cm-editor .cm-content ::selection { background-color: #264f78; color: inherit; }
+  .cm-editor .cm-content { background: transparent !important; -webkit-user-drag: none !important; user-select: text !important; }
+  .cm-editor { -webkit-user-drag: none; }
+</style>
+</head>
+<body>
+  <h3>A) drawSelection（当前 app 状态）+ 主题 .cm-selectionBackground 覆盖</h3>
+  <div id="edA" class="editor"></div>
+  <h3>B) 原生 ::selection（7月已证明可用状态，无 drawSelection）</h3>
+  <div id="edB" class="editor"></div>
+<script type="module">
+import { EditorView, drawSelection, keymap, lineNumbers } from '../frontend/node_modules/@codemirror/view/dist/index.js'
+import { EditorState } from '../frontend/node_modules/@codemirror/state/dist/index.js'
+import { defaultKeymap } from '../frontend/node_modules/@codemirror/commands/dist/index.js'
+
+// 复刻 buildAppearanceTheme 的选中覆盖
+const selThemeA = EditorView.theme({
+  '.cm-selectionBackground': { backgroundColor: '#264f78' },
+  '&.cm-focused .cm-selectionBackground': { backgroundColor: '#264f78' },
+  '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground': { backgroundColor: '#264f78' },
+  '::selection': { backgroundColor: '#264f78' },
+})
+
+const doc = '第一行：一段跨行长文本，测试选中背景色是否能显示出来，足够长以覆盖整行。\n第二行：继续更多文本 content here to span.\n第三行：  末尾带空白的行尾   \n第四行：末尾文字\n'
+
+// A: drawSelection + 主题覆盖（当前 app 状态）
+let viewA = new EditorView({
+  parent: document.getElementById('edA'),
+  state: EditorState.create({
+    doc,
+    extensions: [
+      lineNumbers(), keymap.of([...defaultKeymap]),
+      drawSelection(),
+      EditorView.lineWrapping,
+      selThemeA,
+      EditorView.contentAttributes.of({ spellcheck: 'false' }),
+    ],
+  }),
+})
+
+// B: 无 drawSelection，纯原生 ::selection（7月状态）
+let viewB = new EditorView({
+  parent: document.getElementById('edB'),
+  state: EditorState.create({
+    doc,
+    extensions: [
+      lineNumbers(), keymap.of([...defaultKeymap]),
+      EditorView.lineWrapping,
+    ],
+  }),
+})
+
+// 跨行选区：从 "第一行" 起选到 "第四行" 末尾（含第三行末尾空白）
+const fromA = doc.indexOf('第一行')
+const toA = doc.indexOf('第四行：末尾文字')
+window.setTimeout(() => {
+  viewA.dispatch({ selection: { anchor: fromA, head: toA } })
+  viewA.focus()
+  viewB.dispatch({ selection: { anchor: fromA, head: toA } })
+  viewB.focus()
+  document.title = 'selection-set'
+}, 300)
+</script>
+</body>
+</html>

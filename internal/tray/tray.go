@@ -16,6 +16,7 @@ import (
 	_ "embed"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/getlantern/systray"
@@ -45,6 +46,9 @@ var (
 
 	// 启动幂等性：Start 多次调用只生效一次。
 	started bool
+
+	// quitting 标记是否正在退出，防止重复触发退出逻辑
+	quitting atomic.Bool
 )
 
 func closedChan() chan struct{} {
@@ -121,6 +125,9 @@ func closeOnce(o *sync.Once, ch chan struct{}) {
 //
 // 调用后 systray goroutine 会让消息循环退出，触发 wrappedExit → close(done)。
 func Quit() {
+	if !quitting.CompareAndSwap(false, true) {
+		return // 已经在退出中
+	}
 	mu.RLock()
 	s := started
 	mu.RUnlock()

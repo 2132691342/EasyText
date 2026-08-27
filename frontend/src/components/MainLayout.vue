@@ -94,7 +94,9 @@ const resizing = ref(false)
 const fileOps = useFileOps({
   ed, fs,
   showFileTree,
-  setLastFolder: (p) => { if (ss.config) { ss.config.ui.lastFolder = p; ss.saveConfig() } },
+  setLastFolder: (p) => { if (ss.config) { ss.config.ui.lastFolder = p; ss.saveConfig() } } ,
+  onFileSaved: onFileSaved,
+  onFileOpened: onFileOpened,
 })
 
 // ---- 浮层对话框开关 ----
@@ -443,7 +445,12 @@ async function reopenAs(vt: 'code' | 'hex') {
   try {
     if (vt === 'code') {
       const r = await ReadFile(t.path)
-      if (r) { ed.updateTabContent(t.id, r.content); t.viewType = 'code' }
+      if (r) {
+        ed.updateTabContent(t.id, r.content)
+        // 同步 originalContent，避免关闭时错误提示保存
+        t.originalContent = r.content
+        t.viewType = 'code'
+      }
     } else { t.viewType = 'hex' }
   } catch (e: any) { ElMessage.error('重新打开失败：' + (e?.message || '')) }
 }
@@ -555,6 +562,9 @@ const { tailingTabId, isTailing: tailingStatus, startTail, stopTail } = tailWatc
 
 // ---- 文件变化检测（窗口聚焦时） ----
 let lastFocusCheck = 0
+// 记录用户选择忽略外部变更的文件路径，避免重复提示
+const ignoredExternalChanges = new Set<string>()
+
 async function checkExternalChanges() {
   const now = Date.now()
   // 节流：两次检测间隔至少 3 秒
@@ -562,21 +572,39 @@ async function checkExternalChanges() {
   lastFocusCheck = now
   for (const t of ed.tabs) {
     if (!t.path || t.isDirty) continue
+    // 如果用户已选择忽略此文件的外部变更，跳过检测
+    if (ignoredExternalChanges.has(t.path)) continue
     try {
       const r = await ReadFile(t.path)
       if (r && r.content !== t.originalContent) {
         const ok = await ShowConfirmDialog('文件已变更', `"${t.name}" 已被外部修改，是否重新加载？`)
         if (ok) {
+          // 重新加载：更新内容并同步 originalContent，不标记为脏
           ed.updateTabContent(t.id, r.content)
+          // 同步 originalContent，避免后续检测仍然认为文件有变化
+          const tab = ed.tabs.find(x => x.id === t.id)
+          if (tab) tab.originalContent = r.content
           ElMessage.success(`已重新加载: ${t.name}`)
         } else {
-          // 标记为脏以避免后续重复提示
-          t.isDirty = true
+          // 用户选择不重新加载：记录到忽略集合，避免重复提示
+          // 注意：不标记为脏，这样关闭时不会提示保存
+          ignoredExternalChanges.add(t.path)
         }
       }
     } catch { /* 文件可能已被删除，忽略 */ }
   }
 }
+
+// 当文件被保存时，从忽略集合中移除
+function onFileSaved(filePath: string) {
+  ignoredExternalChanges.delete(filePath)
+}
+
+// 当文件被重新打开时，清除忽略状态
+function onFileOpened(filePath: string) {
+  ignoredExternalChanges.delete(filePath)
+}
+
 function onWindowFocus() { checkExternalChanges() }
 function onVisibilityChange() {
   if (!document.hidden) checkExternalChanges()
@@ -616,6 +644,25 @@ const { onMenuCmd } = useCommands({
   showImageEditorView, toggleLogMode, isMacroRecording,
 })
 
+// ---- 监听来自其他实例的文件打开请求 ----
+let cancelOpenFileListener: (() => void) | null = null
+
+async function setupOpenFileListener() {
+  const { EventsOn } = await import('../../wailsjs/runtime/runtime')
+  cancelOpenFileListener = EventsOn('app:open-file', async (path: string) => {
+    if (path) {
+      await fileOps.openFilePath(path)
+    }
+  })
+}
+
+function cleanupOpenFileListener() {
+  if (cancelOpenFileListener) {
+    cancelOpenFileListener()
+    cancelOpenFileListener = null
+  }
+}
+
 // ---- Lifecycle ----
 onMounted(() => {
   window.addEventListener('keydown', onKeyDown)
@@ -626,6 +673,7 @@ onMounted(() => {
   document.addEventListener('show-column-edit', () => { showColumnEdit.value = true })
   document.addEventListener('visibilitychange', onVisibilityChange)
   window.addEventListener('focus', onWindowFocus)
+  setupOpenFileListener()
   fileOps.restoreSession(); startAutoSave()
 })
 onUnmounted(() => {
@@ -637,6 +685,7 @@ onUnmounted(() => {
   document.removeEventListener('show-column-edit', () => { showColumnEdit.value = true })
   document.removeEventListener('visibilitychange', onVisibilityChange)
   window.removeEventListener('focus', onWindowFocus)
+  cleanupOpenFileListener()
   stopAutoSave()
 })
 </script>

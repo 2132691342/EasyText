@@ -7,6 +7,8 @@ import (
 	"easy-text/backend/config"
 	"easy-text/internal/closepolicy"
 	"easy-text/internal/tray"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App 是 Wails 绑定所需的顶层结构体。
@@ -29,6 +31,12 @@ func (a *App) startup(ctx context.Context) {
 	// 初次同步：避免 OnBeforeClose 在配置完成前读到错误的旧值。
 	if cfg := config.Config; cfg != nil {
 		closepolicy.Set(cfg.Get().UI.CloseToTray)
+	}
+
+	// 处理通过文件关联传入的文件路径
+	if pendingFilePath != "" {
+		runtime.EventsEmit(ctx, "app:open-file", pendingFilePath)
+		pendingFilePath = ""
 	}
 }
 

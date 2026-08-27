@@ -7,7 +7,8 @@ import { AddBookmark, RemoveBookmark, GetBookmarks, GetSnippets } from '../../..
 import { EditorView } from 'codemirror'
 import { keymap, gutter, GutterMarker, Decoration, highlightActiveLine, lineNumbers, highlightSpecialChars, rectangularSelection, crosshairCursor, dropCursor, highlightActiveLineGutter } from '@codemirror/view'
 import { EditorState, Compartment, Prec, StateEffect, StateField, RangeSetBuilder, RangeSet } from '@codemirror/state'
-import { syntaxHighlighting, defaultHighlightStyle, foldGutter, foldKeymap, indentOnInput, bracketMatching, StreamLanguage, LanguageSupport } from '@codemirror/language'
+import { syntaxHighlighting, HighlightStyle, foldGutter, foldKeymap, indentOnInput, bracketMatching, StreamLanguage, LanguageSupport } from '@codemirror/language'
+import { tags } from '@lezer/highlight'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { closeBrackets, closeBracketsKeymap, completionKeymap, autocompletion, snippetCompletion } from '@codemirror/autocomplete'
 import { lintKeymap } from '@codemirror/lint'
@@ -47,10 +48,139 @@ const editorContainer = ref<HTMLElement | null>(null)
 let editorView: EditorView | null = null
 let isInitializing = false
 
+// ---- 右键菜单状态 ----
+const showContextMenu = ref(false)
+const contextMenuX = ref(0)
+const contextMenuY = ref(0)
+const hasSelection = ref(false)
+
+// ---- 右键菜单命令处理 ----
+function handleContextMenuCommand(cmd: string) {
+  showContextMenu.value = false
+  switch (cmd) {
+    case 'cut': cutSelection(); break
+    case 'copy': copySelection(); break
+    case 'paste': pasteAtCursor(); break
+    case 'selectAll': selectAll(); break
+    case 'undo': undoAction(); break
+    case 'redo': redoAction(); break
+    case 'format-json': formatJsonSelection(); break
+    case 'format-xml': formatXmlSelection(); break
+    case 'minify-json': minifyJsonSelection(); break
+    case 'validate-json': validateJsonSelection(); break
+    case 'comment-line': toggleCommentAction(); break
+    case 'move-up': moveLineUp(); break
+    case 'move-down': moveLineDown(); break
+    case 'duplicate': duplicateLine(); break
+    case 'delete-line': deleteLine(); break
+    case 'uppercase': transformCase('upper'); break
+    case 'lowercase': transformCase('lower'); break
+    case 'titlecase': transformCase('title'); break
+    case 'tab-to-spaces': convertTabsSpaces('tabToSpaces'); break
+    case 'spaces-to-tabs': convertTabsSpaces('spacesLeadingToTabs'); break
+    case 'trim-trailing': trimWhitespace('trailing'); break
+    case 'find': document.dispatchEvent(new CustomEvent('ndd-key', { detail: 'find' })); break
+    case 'replace': document.dispatchEvent(new CustomEvent('ndd-key', { detail: 'replace' })); break
+  }
+}
+
+// ---- 右键菜单事件处理 ----
+function onContextMenu(e: MouseEvent) {
+  e.preventDefault()
+  e.stopPropagation()
+  if (!editorView) return
+  const selection = editorView.state.selection.main
+  hasSelection.value = selection.from !== selection.to
+  // 边界检测：防止菜单超出视口右下边界
+  const menuW = 220, menuH = 400
+  let x = e.clientX, y = e.clientY
+  if (x + menuW > window.innerWidth) x = window.innerWidth - menuW - 4
+  if (y + menuH > window.innerHeight) y = window.innerHeight - menuH - 4
+  contextMenuX.value = Math.max(2, x)
+  contextMenuY.value = Math.max(2, y)
+  showContextMenu.value = true
+}
+
+// 点击其他地方关闭菜单
+function closeContextMenu() {
+  showContextMenu.value = false
+}
+
+// ---- 编辑操作函数 ----
+function cutSelection() {
+  if (!editorView) return
+  const { from, to } = editorView.state.selection.main
+  if (from === to) return
+  const text = editorView.state.sliceDoc(from, to)
+  // 先写入应用内剪贴板（可靠），再尽力写入系统剪贴板。
+  // WebView2 下 navigator.clipboard 可能因权限被拒，故不作为剪切成功的前置条件。
+  editorStore.pushClipboard(text)
+  navigator.clipboard?.writeText?.(text).catch(() => {})
+  editorView.dispatch({ changes: { from, to, insert: '' } })
+}
+
+function copySelection() {
+  if (!editorView) return
+  const { from, to } = editorView.state.selection.main
+  if (from === to) return
+  const text = editorView.state.sliceDoc(from, to)
+  editorStore.pushClipboard(text)
+  navigator.clipboard?.writeText?.(text).catch(() => {})
+  ElMessage.success('已复制')
+}
+
+function pasteAtCursor() {
+  if (!editorView) return
+  // 优先用应用内剪贴板历史，避免 WebView2 下 navigator.clipboard 读取权限问题
+  const clip = editorStore.clipboardHistory[0]
+  if (clip) {
+    const pos = editorView.state.selection.main.head
+    editorView.dispatch({ changes: { from: pos, insert: clip } })
+    return
+  }
+  navigator.clipboard?.readText?.().then(text => {
+    if (text && editorView) {
+      const pos = editorView.state.selection.main.head
+      editorView.dispatch({ changes: { from: pos, insert: text } })
+    } else if (!text) {
+      ElMessage.info('剪贴板为空')
+    }
+  }).catch(() => {
+    ElMessage.error('粘贴失败')
+  })
+}
+
+function selectAll() {
+  if (!editorView) return
+  editorView.dispatch({ selection: { anchor: 0, head: editorView.state.doc.length } })
+}
+
+function undoAction() {
+  if (!editorView) return
+  undo(editorView)
+}
+
+function redoAction() {
+  if (!editorView) return
+  redo(editorView)
+}
+
+function toggleCommentAction() {
+  if (!editorView) return
+  toggleComment(editorView)
+}
+
+// ---- 右键菜单行操作函数 ----
+function moveLineUp() { lineOperation('moveUp') }
+function moveLineDown() { lineOperation('moveDown') }
+function duplicateLine() { lineOperation('duplicate') }
+function deleteLine() { lineOperation('remove') }
+
 // ---- Compartments ----
 const tabSizeCompartment = new Compartment()
 const wordWrapCompartment = new Compartment()
 const appearanceCompartment = new Compartment()
+const syntaxHighlightCompartment = new Compartment()
 const foldCompartment = new Compartment()
 const indentGuideCompartment = new Compartment()
 const showWhitespaceCompartment = new Compartment()
@@ -324,8 +454,9 @@ function buildAppearanceTheme() {
       backgroundColor: c.bg, color: c.fg,
     },
     '.cm-scroller': { fontFamily: config.value?.editor?.fontFamily || 'Consolas, Monaco, "Courier New", monospace' },
-    '.cm-content': { userSelect: 'text', WebkitUserSelect: 'text', MozUserSelect: 'text', WebkitUserDrag: 'none' },
-    '.cm-line': { userSelect: 'text', WebkitUserSelect: 'text', MozUserSelect: 'text' },
+    // user-select 由 style.css 全局设置为 text（配合原生 ::selection 高亮）；
+    // 此处只需禁用 WebView2 的元素拖拽（-webkit-user-drag: element 会劫持文本选择）。
+    '.cm-content': { WebkitUserDrag: 'none' },
     '.cm-gutters': { backgroundColor: c.gutterBg, color: c.gutterFg, borderRight: `1px solid ${c.isDark ? '#404040' : '#e5e7eb'}` },
     '.cm-activeLineGutter': { backgroundColor: c.activeLine },
     '.cm-activeLine': { backgroundColor: c.activeLine },
@@ -335,9 +466,32 @@ function buildAppearanceTheme() {
     // 🆕 V2.0.0 标签配对高亮
     '.cm-matchingTag': { backgroundColor: c.bracketMatch, outline: '1px solid ' + c.accent },
     '.cm-foldPlaceholder': { backgroundColor: c.isDark ? '#3c3c3c' : '#e5e7eb', color: c.fg, border: 'none' },
-    // Native ::selection (no drawSelection — avoids WebView2 partial-line selection bug)
-    '& .cm-content ::selection': { backgroundColor: c.selection, color: 'inherit' },
+    // 原生 ::selection 高亮选中文本。
+    // WebView2 下 CodeMirror 的 drawSelection（DOM 层选区）不可靠，会导致“能选中但无背景色”，
+    // 故移除 drawSelection，改用原生 ::selection（配合 style.css 中的主题色变量）。
+    '& .cm-content ::selection': {
+      backgroundColor: c.selection,
+      color: 'inherit',
+    },
   })
+}
+
+// ---- 主题语法高亮 ----
+// 用主题定义的 comment/keyword/string/... 配色生成 CodeMirror 高亮，
+// 让 json/yaml/js 等语言的语法高亮跟随主题切换（替代默认 defaultHighlightStyle）。
+function buildSyntaxHighlight() {
+  const c = colors.value
+  return syntaxHighlighting(HighlightStyle.define([
+    { tag: [tags.comment, tags.lineComment, tags.blockComment, tags.docComment], color: c.comment },
+    { tag: [tags.keyword, tags.controlKeyword, tags.moduleKeyword, tags.operatorKeyword, tags.definitionKeyword, tags.modifier, tags.self, tags.bool, tags.null, tags.atom], color: c.keyword },
+    { tag: [tags.string, tags.docString, tags.character, tags.attributeValue, tags.regexp, tags.escape, tags.color, tags.url], color: c.string },
+    { tag: [tags.number, tags.integer, tags.float], color: c.number },
+    { tag: [tags.typeName, tags.className, tags.namespace, tags.tagName], color: c.type },
+    { tag: [tags.function(tags.variableName), tags.function(tags.propertyName), tags.macroName], color: c.function },
+    { tag: [tags.variableName, tags.propertyName, tags.attributeName, tags.labelName], color: c.variable },
+    { tag: [tags.operator, tags.derefOperator, tags.arithmeticOperator, tags.logicOperator, tags.bitwiseOperator, tags.compareOperator, tags.updateOperator, tags.definitionOperator, tags.typeOperator, tags.controlOperator], color: c.operator },
+    { tag: [tags.definition(tags.variableName), tags.definition(tags.propertyName)], color: c.function },
+  ]), { fallback: true })
 }
 
 // ---- Fold gutter ----
@@ -440,26 +594,10 @@ function buildWebAddrDecorations(state: any): RangeSet<Decoration> {
 }
 
 // ==================== Punctuation keymap (fix Chinese IME) ====================
-function makeInsertChar(ch: string) {
-  return (view: EditorView) => {
-    if (view.composing || view.compositionStarted) return false
-    view.dispatch(view.state.replaceSelection(ch))
-    return true
-  }
-}
-const punctuationKeymap = Prec.high(keymap.of([
-  { key: ',', run: makeInsertChar(',') }, { key: ';', run: makeInsertChar(';') },
-  { key: '.', run: makeInsertChar('.') }, { key: ':', run: makeInsertChar(':') },
-  { key: '!', run: makeInsertChar('!') }, { key: '?', run: makeInsertChar('?') },
-  { key: '-', run: makeInsertChar('-') }, { key: '_', run: makeInsertChar('_') },
-  { key: '~', run: makeInsertChar('~') }, { key: '@', run: makeInsertChar('@') },
-  { key: '#', run: makeInsertChar('#') }, { key: '$', run: makeInsertChar('$') },
-  { key: '%', run: makeInsertChar('%') }, { key: '^', run: makeInsertChar('^') },
-  { key: '&', run: makeInsertChar('&') }, { key: '*', run: makeInsertChar('*') },
-  { key: '+', run: makeInsertChar('+') }, { key: '=', run: makeInsertChar('=') },
-  { key: '/', run: makeInsertChar('/') }, { key: '\\', run: makeInsertChar('\\') },
-  { key: '|', run: makeInsertChar('|') },
-]))
+// ★ 已移除 punctuationKeymap：CodeMirror 6 自身已正确处理标点符号输入
+//   旧代码使用 Prec.high 拦截标点键并手动 dispatch，
+//   与 IME 组合输入冲突，导致标点在中文输入法下无法正常输入
+//   且 view.composing / view.compositionStarted 非标准 API，行为不可靠
 
 // ==================== Editor creation ====================
 function createEditor() {
@@ -483,7 +621,7 @@ function createEditor() {
       dropCursor(),
       EditorState.allowMultipleSelections.of(true),
       indentOnInput(),
-      syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+      syntaxHighlightCompartment.of(buildSyntaxHighlight()),
       bracketMatching(),
       closeBrackets(),
       // 🆕 V2.0.0 代码片段自动补全
@@ -502,7 +640,6 @@ function createEditor() {
         ...lintKeymap,
         indentWithTab,
       ]),
-      punctuationKeymap,
       // Language
       langCompartment.of(langExtensions),
       // Folding
@@ -632,7 +769,12 @@ function createEditor() {
 
 function reconfigureAppearance() {
   if (!editorView) return
-  editorView.dispatch({ effects: appearanceCompartment.reconfigure(buildAppearanceTheme()) })
+  editorView.dispatch({
+    effects: [
+      appearanceCompartment.reconfigure(buildAppearanceTheme()),
+      syntaxHighlightCompartment.reconfigure(buildSyntaxHighlight()),
+    ],
+  })
 }
 
 // ==================== Editor operations ====================
@@ -675,10 +817,6 @@ function toggleShowWhitespace(show: boolean) {
   }) : EditorView.theme({})
   editorView.dispatch({ effects: showWhitespaceCompartment.reconfigure(specialChars) })
 }
-
-// ---- Undo/Redo ----
-function undoAction() { if (editorView) undo(editorView) }
-function redoAction() { if (editorView) redo(editorView) }
 
 // ---- Case transform ----
 function transformCase(type: string) {
@@ -1191,9 +1329,12 @@ async function formatJsonSelection() {
   try {
     const mod = await import('../../../wailsjs/go/main/App')
     const r = await mod.FormatJSON(text, 2)
-    if (r && r.content) {
+    if (r && r.success && r.content) {
       if (from === to) editorView.dispatch({ changes: { from: 0, to: editorView.state.doc.length, insert: r.content } })
       else editorView.dispatch({ changes: { from, to, insert: r.content } })
+      ElMessage.success('JSON 格式化成功')
+    } else if (r && !r.success) {
+      ElMessage.error(`JSON 格式化失败: ${r.error?.message || '未知错误'}`)
     }
   } catch (e: any) { ElMessage.error(e?.message || 'JSON 格式化失败') }
 }
@@ -1205,6 +1346,43 @@ function formatXmlSelection() {
   if (!formatted) { ElMessage?.warning?.('XML 格式化失败'); return }
   if (from === to) editorView.dispatch({ changes: { from: 0, to: editorView.state.doc.length, insert: formatted } })
   else editorView.dispatch({ changes: { from, to, insert: formatted } })
+}
+
+// ---- JSON 压缩 ----
+async function minifyJsonSelection() {
+  if (!editorView) return
+  const { from, to } = editorView.state.selection.main
+  const text = from === to ? editorView.state.doc.toString() : editorView.state.sliceDoc(from, to)
+  try {
+    const mod = await import('../../../wailsjs/go/main/App')
+    const r = await mod.MinifyJSON(text)
+    if (r && r.success && r.content) {
+      if (from === to) editorView.dispatch({ changes: { from: 0, to: editorView.state.doc.length, insert: r.content } })
+      else editorView.dispatch({ changes: { from, to, insert: r.content } })
+      ElMessage.success('JSON 压缩成功')
+    } else if (r && !r.success) {
+      ElMessage.error(`JSON 压缩失败: ${r.error?.message || '未知错误'}`)
+    }
+  } catch (e: any) { ElMessage.error(e?.message || 'JSON 压缩失败') }
+}
+
+// ---- JSON 校验 ----
+async function validateJsonSelection() {
+  if (!editorView) return
+  const { from, to } = editorView.state.selection.main
+  const text = from === to ? editorView.state.doc.toString() : editorView.state.sliceDoc(from, to)
+  try {
+    const mod = await import('../../../wailsjs/go/main/App')
+    const r = await mod.ValidateJSON(text)
+    if (r) {
+      if (r.success) {
+        ElMessage.success('JSON 格式正确')
+      } else {
+        const errMsg = r.error?.message || r.error || '未知错误'
+        ElMessage.error(`JSON 格式错误: ${errMsg}`)
+      }
+    }
+  } catch (e: any) { ElMessage.error(e?.message || 'JSON 校验失败') }
 }
 function prettyPrintXml(xml: string): string {
   try {
@@ -1486,6 +1664,8 @@ function handleEditorCommand(e: Event) {
   // ---- 格式化 ----
   else if (cmd === 'format-json') formatJsonSelection()
   else if (cmd === 'format-xml') formatXmlSelection()
+  else if (cmd === 'minify-json') minifyJsonSelection()
+  else if (cmd === 'validate-json') validateJsonSelection()
   // ---- 显示全部符号 ----
   else if (cmd === 'show-all') toggleShowAll()
   // ---- URL 高亮 ----
@@ -1690,10 +1870,13 @@ watch(() => props.tab.id, (newId, oldId) => {
 })
 
 watch(() => props.tab.content, (nc) => {
-  if (editorView && editorView.state.doc.toString() !== nc) {
+  if (!editorView) return
+  const current = editorView.state.doc.toString()
+  if (current !== nc) {
     isInitializing = true
-    editorView.dispatch({ changes: { from: 0, to: editorView.state.doc.length, insert: nc } })
-    Promise.resolve().then(() => { isInitializing = false })
+    editorView.dispatch({ changes: { from: 0, to: current.length, insert: nc } })
+    // ★ 使用 microtask 确保在下一个微任务中重置，避免与 updateListener 竞态
+    queueMicrotask(() => { isInitializing = false })
   }
 })
 watch(() => settingStore.config?.theme.currentTheme, reconfigureAppearance)
@@ -1704,7 +1887,7 @@ watch(() => config.value?.editor?.fontFamily, reconfigureAppearance)
 
 onMounted(() => {
   createEditor()
-  window.addEventListener('editor-command', handleEditorCommand)
+  document.addEventListener('editor-command', handleEditorCommand)
 })
 
 // 文档地图：内容变化后刷新 scrollHeight（避免视口指示器比例失真）
@@ -1739,7 +1922,7 @@ watch(renderedHtml, async () => {
 })
 
 onUnmounted(() => {
-  window.removeEventListener('editor-command', handleEditorCommand)
+  document.removeEventListener('editor-command', handleEditorCommand)
   editorView?.destroy()
 })
 </script>
@@ -1756,8 +1939,114 @@ onUnmounted(() => {
       <button class="px-2 py-0.5 text-xs rounded text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-600 dark:text-gray-400" @click="exportMdHtml">导出 HTML</button>
     </div>
 
-    <div class="flex-1 flex overflow-hidden" style="position:relative;">
+    <div class="flex-1 flex overflow-hidden" style="position:relative;" @contextmenu="onContextMenu" @click="closeContextMenu">
       <div ref="editorContainer" :class="{'w-full':!isMarkdown||mdMode==='edit','cm-container-split border-r border-gray-200 dark:border-gray-700':isMarkdown&&mdMode==='split','hidden':isMarkdown&&mdMode==='preview','with-minimap':showMinimap}" class="cm-container" @dblclick="highlightWordAtCursor"></div>
+
+      <!-- 右键菜单 -->
+      <Teleport to="body">
+        <div v-if="showContextMenu"
+          class="fixed z-[9999] bg-white dark:bg-[#2d2d2d] rounded-lg shadow-2xl border border-gray-200 dark:border-gray-600 py-1 min-w-[200px] context-menu-panel"
+          :style="{ left: contextMenuX + 'px', top: contextMenuY + 'px' }"
+          @click.stop
+          @contextmenu.prevent
+        >
+          <!-- 剪切/复制/粘贴/全选 -->
+          <button class="context-menu-item" :disabled="!hasSelection" @click="handleContextMenuCommand('cut')">
+            <span class="item-label">剪切</span>
+            <span class="item-shortcut">Ctrl+X</span>
+          </button>
+          <button class="context-menu-item" :disabled="!hasSelection" @click="handleContextMenuCommand('copy')">
+            <span class="item-label">复制</span>
+            <span class="item-shortcut">Ctrl+C</span>
+          </button>
+          <button class="context-menu-item" @click="handleContextMenuCommand('paste')">
+            <span class="item-label">粘贴</span>
+            <span class="item-shortcut">Ctrl+V</span>
+          </button>
+          <button class="context-menu-item" @click="handleContextMenuCommand('selectAll')">
+            <span class="item-label">全选</span>
+            <span class="item-shortcut">Ctrl+A</span>
+          </button>
+          <div class="context-menu-separator"></div>
+          <!-- 撤销/重做 -->
+          <button class="context-menu-item" @click="handleContextMenuCommand('undo')">
+            <span class="item-label">撤销</span>
+            <span class="item-shortcut">Ctrl+Z</span>
+          </button>
+          <button class="context-menu-item" @click="handleContextMenuCommand('redo')">
+            <span class="item-label">重做</span>
+            <span class="item-shortcut">Ctrl+Y</span>
+          </button>
+          <div class="context-menu-separator"></div>
+          <!-- 查找/替换 -->
+          <button class="context-menu-item" @click="handleContextMenuCommand('find')">
+            <span class="item-label">查找</span>
+            <span class="item-shortcut">Ctrl+F</span>
+          </button>
+          <button class="context-menu-item" @click="handleContextMenuCommand('replace')">
+            <span class="item-label">替换</span>
+            <span class="item-shortcut">Ctrl+H</span>
+          </button>
+          <div class="context-menu-separator"></div>
+          <!-- 行操作 -->
+          <button class="context-menu-item" @click="handleContextMenuCommand('comment-line')">
+            <span class="item-label">注释/取消注释</span>
+            <span class="item-shortcut">Ctrl+/</span>
+          </button>
+          <button class="context-menu-item" @click="handleContextMenuCommand('duplicate')">
+            <span class="item-label">复制当前行</span>
+            <span class="item-shortcut">Ctrl+D</span>
+          </button>
+          <button class="context-menu-item" @click="handleContextMenuCommand('delete-line')">
+            <span class="item-label">删除当前行</span>
+            <span class="item-shortcut">Ctrl+L</span>
+          </button>
+          <button class="context-menu-item" @click="handleContextMenuCommand('move-up')">
+            <span class="item-label">上移当前行</span>
+            <span class="item-shortcut">Ctrl+Shift+↑</span>
+          </button>
+          <button class="context-menu-item" @click="handleContextMenuCommand('move-down')">
+            <span class="item-label">下移当前行</span>
+            <span class="item-shortcut">Ctrl+Shift+↓</span>
+          </button>
+          <div class="context-menu-separator"></div>
+          <!-- 大小写转换 -->
+          <button class="context-menu-item" :disabled="!hasSelection" @click="handleContextMenuCommand('uppercase')">
+            <span class="item-label">转为大写</span>
+          </button>
+          <button class="context-menu-item" :disabled="!hasSelection" @click="handleContextMenuCommand('lowercase')">
+            <span class="item-label">转为小写</span>
+          </button>
+          <button class="context-menu-item" :disabled="!hasSelection" @click="handleContextMenuCommand('titlecase')">
+            <span class="item-label">首字母大写</span>
+          </button>
+          <div class="context-menu-separator"></div>
+          <!-- 格式化工具 -->
+          <button class="context-menu-item" @click="handleContextMenuCommand('format-json')">
+            <span class="item-label">JSON 格式化</span>
+          </button>
+          <button class="context-menu-item" @click="handleContextMenuCommand('minify-json')">
+            <span class="item-label">JSON 压缩</span>
+          </button>
+          <button class="context-menu-item" @click="handleContextMenuCommand('validate-json')">
+            <span class="item-label">JSON 校验</span>
+          </button>
+          <button class="context-menu-item" @click="handleContextMenuCommand('format-xml')">
+            <span class="item-label">XML 格式化</span>
+          </button>
+          <div class="context-menu-separator"></div>
+          <!-- 空白处理 -->
+          <button class="context-menu-item" @click="handleContextMenuCommand('tab-to-spaces')">
+            <span class="item-label">Tab 转空格</span>
+          </button>
+          <button class="context-menu-item" @click="handleContextMenuCommand('spaces-to-tabs')">
+            <span class="item-label">空格转 Tab</span>
+          </button>
+          <button class="context-menu-item" @click="handleContextMenuCommand('trim-trailing')">
+            <span class="item-label">去除行尾空格</span>
+          </button>
+        </div>
+      </Teleport>
 
       <!-- Goto line dialog -->
       <Teleport to="body">
@@ -1785,6 +2074,52 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+/* ---- 右键菜单样式 ---- */
+.context-menu-panel {
+  max-height: calc(100vh - 8px);
+  overflow-y: auto;
+  box-shadow: 0 8px 30px rgba(0,0,0,.18), 0 0 1px rgba(0,0,0,.12);
+}
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 6px 16px;
+  font-size: 13px;
+  color: #333;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+.context-menu-item:hover:not(:disabled) {
+  background: #e8e8e8;
+}
+.context-menu-item:disabled {
+  color: #ccc;
+  cursor: not-allowed;
+}
+.context-menu-item .item-label {
+  flex: 1;
+}
+.context-menu-item .item-shortcut {
+  font-size: 11px;
+  color: #999;
+  margin-left: 20px;
+}
+.context-menu-separator {
+  height: 1px;
+  margin: 4px 0;
+  background: #e5e5e5;
+}
+html.dark .context-menu-item { color: #d4d4d4; }
+html.dark .context-menu-item:hover:not(:disabled) { background: #3c3c3c; }
+html.dark .context-menu-item:disabled { color: #555; }
+html.dark .context-menu-item .item-shortcut { color: #888; }
+html.dark .context-menu-separator { background: #404040; }
+
 .cm-container { position: absolute; top: 0; left: 0; right: 0; bottom: 0; overflow: hidden; }
 .cm-container.with-minimap { right: 90px; }
 /* 分屏模式：编辑器脱离绝对定位回到 flex 流内占左半，避免绝对定位铺满遮住右侧预览 */

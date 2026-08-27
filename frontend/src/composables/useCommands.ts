@@ -173,6 +173,11 @@ export function useCommands(deps: {
       'encode-Big5': () => deps.reopenWithEncoding('Big5'),
       'fmt-xml': () => execEd('format-xml'),
       'fmt-json': () => execEd('format-json'),
+      // Toolbar / 菜单使用的命令名（与 fmt-* 等价）
+      'format-json': () => execEd('format-json'),
+      'format-xml': () => execEd('format-xml'),
+      'minify-json': () => execEd('minify-json'),
+      'validate-json': () => execEd('validate-json'),
       'le-CRLF': () => { if (ed.activeTab) ed.updateTabLineEnding(ed.activeTab.id, 'CRLF') },
       'le-LF': () => { if (ed.activeTab) ed.updateTabLineEnding(ed.activeTab.id, 'LF') },
       'le-CR': () => { if (ed.activeTab) ed.updateTabLineEnding(ed.activeTab.id, 'CR') },
