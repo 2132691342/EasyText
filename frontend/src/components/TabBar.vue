@@ -9,7 +9,8 @@ import {
 } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
 import type { EditorTab } from '@/types'
-import { ShowConfirmDialog, SaveFile, RenameFile, GetDirectoryTree, ShowMessageDialog, SaveFileDialog } from '../../wailsjs/go/main/App'
+import { SaveFile, RenameFile, GetDirectoryTree, ShowMessageDialog, SaveFileDialog } from '../../wailsjs/go/main/App'
+import { confirmDialog, confirmSaveDiscard } from '@/utils/confirm'
 
 const editorStore = useEditorStore()
 const fileStore = useFileStore()
@@ -74,10 +75,16 @@ async function closeTab(tab: EditorTab, e: MouseEvent) {
   e.stopPropagation()
 
   if (tab.isDirty) {
-    const confirm = await ShowConfirmDialog('保存更改', `是否保存对 ${tab.name} 的更改？`)
-    if (confirm) {
-      await SaveFile(tab.path, tab.content, tab.encoding)
-      editorStore.markTabSaved(tab.id)
+    const choice = await confirmSaveDiscard(tab.name)
+    if (choice === 'cancel') return
+    if (choice === 'save' && tab.path) {
+      try {
+        await SaveFile(tab.path, tab.content, tab.encoding)
+        editorStore.markTabSaved(tab.id)
+      } catch {
+        ElMessage.error('保存失败，已取消关闭')
+        return
+      }
     }
   }
 
@@ -334,7 +341,12 @@ function cancelRename() {
 async function handleCloseAllTabs() {
   if (editorStore.tabs.length === 0) return
   if (editorStore.hasUnsavedChanges) {
-    const confirmed = await ShowConfirmDialog('关闭所有', '部分文件未保存，确定关闭所有标签页？')
+    const confirmed = await confirmDialog({
+      title: '关闭所有',
+      message: `有 ${editorStore.dirtyTabs.length} 个文件未保存，确定关闭所有标签页？`,
+      confirmText: '全部关闭',
+      danger: true,
+    })
     if (!confirmed) return
   }
   editorStore.closeAllTabs()
@@ -346,7 +358,12 @@ async function handleCloseOtherTabs() {
   if (!activeTab) return
   const otherDirtyTabs = editorStore.tabs.filter(t => t.id !== activeTab.id && t.isDirty)
   if (otherDirtyTabs.length > 0) {
-    const confirmed = await ShowConfirmDialog('关闭其他', '其他标签页中有未保存的更改，确定关闭？')
+    const confirmed = await confirmDialog({
+      title: '关闭其他',
+      message: `其他标签页中有 ${otherDirtyTabs.length} 个文件未保存，确定关闭？`,
+      confirmText: '关闭其他',
+      danger: true,
+    })
     if (!confirmed) return
   }
   editorStore.closeOtherTabs(activeTab.id)
@@ -382,19 +399,18 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="flex items-stretch bg-[#e8e8e8] dark:bg-[#252526] border-b border-gray-300 dark:border-gray-700 select-none">
+  <div class="tabbar flex items-stretch select-none">
     <!-- Tab list (scrollable) -->
-    <div class="flex-1 flex items-end overflow-x-auto min-w-0">
+    <div class="flex-1 flex items-stretch overflow-x-auto min-w-0">
       <div
         v-for="(tab, idx) in editorStore.tabs"
         :key="tab.id"
         draggable="true"
-        class="tab flex items-center px-2.5 py-1.5 min-w-[100px] max-w-[180px] cursor-pointer border-r border-gray-300 dark:border-gray-700 relative"
+        class="tab"
         :class="{
-          'bg-white dark:bg-[#1e1e1e] active': tab.id === editorStore.activeTabId,
-          'bg-[#dcdcdc] dark:bg-[#2d2d2d] hover:bg-[#d4d4d4] dark:hover:bg-[#333]': tab.id !== editorStore.activeTabId,
+          'active': tab.id === editorStore.activeTabId,
           'opacity-50': dragIndex === idx,
-          'border-l-2 border-l-blue-500': dragOverIndex === idx && dragIndex !== null && dragIndex !== idx,
+          'drag-over': dragOverIndex === idx && dragIndex !== null && dragIndex !== idx,
         }"
         @click="selectTab(tab)"
         @contextmenu="handleContextMenu($event, tab)"
@@ -405,7 +421,7 @@ onUnmounted(() => {
         @drop="onDrop($event, idx)"
         @dragend="onDragEnd"
       >
-        <FileText class="w-3.5 h-3.5 mr-1.5 text-gray-400 flex-shrink-0" />
+        <FileText class="w-3.5 h-3.5 flex-shrink-0 tab-icon" />
         <!-- Rename input -->
         <div v-if="renamingTabId === tab.id" class="flex-1 min-w-0" @click.stop>
           <input
@@ -419,37 +435,29 @@ onUnmounted(() => {
         </div>
         <span v-else class="text-[12px] truncate flex-1 leading-tight">{{ getTabTitle(tab) }}</span>
         <button
-          class="tab-close-btn ml-1.5 p-0.5 rounded hover:bg-gray-300/80 dark:hover:bg-gray-500/60 flex-shrink-0"
+          class="tab-close flex-shrink-0"
+          :title="`关闭 ${tab.name}`"
           @click="closeTab(tab, $event)"
         >
-          <X class="w-3 h-3" />
+          <X class="w-3.5 h-3.5" />
         </button>
       </div>
     </div>
 
     <!-- Tab action buttons (right side, notepad-- style) -->
-    <div v-if="editorStore.tabs.length > 0" class="flex items-center px-1 border-l border-gray-300 dark:border-gray-700 bg-[#e8e8e8] dark:bg-[#252526] flex-shrink-0">
+    <div v-if="editorStore.tabs.length > 0" class="tab-actions">
       <el-tooltip content="关闭已保存的标签页" placement="bottom" :show-after="300">
-        <button
-          class="p-1 rounded hover:bg-gray-300/70 dark:hover:bg-gray-600/60 text-gray-500 hover:text-green-600 dark:hover:text-green-400 transition-colors"
-          @click="handleCloseSavedTabs"
-        >
+        <button class="tab-action tab-action--ok" @click="handleCloseSavedTabs">
           <CheckCircle2 class="w-3.5 h-3.5" />
         </button>
       </el-tooltip>
       <el-tooltip content="关闭其他标签页" placement="bottom" :show-after="300">
-        <button
-          class="p-1 rounded hover:bg-gray-300/70 dark:hover:bg-gray-600/60 text-gray-500 hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
-          @click="handleCloseOtherTabs"
-        >
+        <button class="tab-action tab-action--warn" @click="handleCloseOtherTabs">
           <XCircle class="w-3.5 h-3.5" />
         </button>
       </el-tooltip>
       <el-tooltip content="关闭所有标签页" placement="bottom" :show-after="300">
-        <button
-          class="p-1 rounded hover:bg-gray-300/70 dark:hover:bg-gray-600/60 text-gray-500 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-          @click="handleCloseAllTabs"
-        >
+        <button class="tab-action tab-action--danger" @click="handleCloseAllTabs">
           <XSquare class="w-3.5 h-3.5" />
         </button>
       </el-tooltip>
@@ -529,45 +537,106 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.tabbar {
+  height: var(--et-h-tab);
+  background: var(--et-bg-sunken);
+  border-bottom: 1px solid var(--et-border);
+}
+
 .tab {
   position: relative;
-  transition: background 0.1s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--et-h-tab);
+  padding: 0 8px 0 10px;
+  min-width: 110px;
+  max-width: 190px;
+  cursor: pointer;
+  border-right: 1px solid var(--et-border);
+  color: var(--et-fg-muted);
+  transition: background .12s ease, color .12s ease;
 }
 
-.tab:last-child {
-  border-right: none;
-}
+.tab:last-child { border-right: none; }
+.tab:hover { background: var(--et-bg-hover); }
 
-/* Active tab indicator (top blue line, like notepad--) */
 .tab.active {
-  box-shadow: inset 0 2px 0 0 #3b82f6;
+  background: var(--et-bg);
+  color: var(--et-fg);
 }
 
-.tab.active::after {
+/* 激活指示：顶部 2px 主色条 */
+.tab.active::before {
   content: '';
   position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background-color: #3b82f6;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--et-accent);
 }
+
+/* 拖拽插入位置提示 */
+.tab.drag-over { box-shadow: inset 2px 0 0 0 var(--et-accent); }
+
+.tab-icon { color: var(--et-fg-subtle); }
+.tab.active .tab-icon { color: var(--et-accent); }
+
+/* 关闭按钮：默认隐藏，悬停/激活时显现，减少视觉噪音 */
+.tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  border-radius: var(--et-radius-sm);
+  color: var(--et-fg-subtle);
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity .12s ease, background .12s ease, color .12s ease;
+}
+.tab:hover .tab-close,
+.tab.active .tab-close { opacity: 1; }
+.tab-close:hover { background: var(--et-bg-active); color: var(--et-fg); }
+
+.tab-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 6px;
+  border-left: 1px solid var(--et-border);
+  flex-shrink: 0;
+}
+
+.tab-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  border-radius: var(--et-radius-sm);
+  color: var(--et-fg-subtle);
+  cursor: pointer;
+  transition: background .12s ease, color .12s ease;
+}
+.tab-action:hover { background: var(--et-bg-hover); }
+.tab-action--ok:hover { color: #22c55e; }
+.tab-action--warn:hover { color: #f59e0b; }
+.tab-action--danger:hover { color: #ef4444; }
 
 .tab-rename-input {
   width: 100%;
-  padding: 0 2px;
+  padding: 1px 4px;
   font-size: 12px;
   line-height: 1.4;
-  border: 1px solid #3b82f6;
-  border-radius: 2px;
+  border: 1px solid var(--et-accent);
+  border-radius: var(--et-radius-sm);
   outline: none;
-  background: white;
-  color: #333;
-}
-
-html.dark .tab-rename-input {
-  background: #3c3c3c;
-  color: #e0e0e0;
-  border-color: #60a5fa;
+  background: var(--et-bg);
+  color: var(--et-fg);
 }
 </style>

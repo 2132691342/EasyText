@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { onMounted, watch, ref } from 'vue'
+import { onMounted, onUnmounted, watch, ref } from 'vue'
 import { useFileStore, useEditorStore } from '@/stores'
 import { GetDirectoryTree, ReadFile, CreateDirectory, SaveFile } from '../../wailsjs/go/main/App'
 import { getTabViewType, getFileExtension } from '@/utils'
@@ -139,6 +139,10 @@ function handleDocumentClick() {
 
 onMounted(() => {
   document.addEventListener('click', handleDocumentClick)
+})
+// 侧边栏随面板切换反复挂载/卸载，不移除会持续累积监听器
+onUnmounted(() => {
+  document.removeEventListener('click', handleDocumentClick)
 })
 </script>
 

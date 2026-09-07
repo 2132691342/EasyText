@@ -12,6 +12,7 @@ const props = defineProps<{ visible: boolean; initialTab?: 'files' | 'folders' }
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'open-file', path: string): void
+  (e: 'open-folder', path: string): void
 }>()
 const activeTab = ref<'files' | 'folders'>(props.initialTab || 'files')
 
@@ -40,9 +41,9 @@ async function openRecentFile(entry: RecentEntry) {
 
 async function openRecentFolder(entry: RecentEntry) {
   try {
-    const { useFileStore } = await import('@/stores')
-    useFileStore().setDirectory(entry.path)
     await AddRecentEntry(entry.path, true)
+    // 交给父级处理：仅 setDirectory 不会展开目录树面板，用户会以为点了没反应
+    emit('open-folder', entry.path)
     emit('close')
   } catch (e: any) {
     ElMessage.error('打开文件夹失败: ' + (e?.message || ''))
@@ -60,12 +61,18 @@ async function browseFile() {
 }
 
 async function clearRecent(section: 'files' | 'folders') {
-  if (section === 'files') {
-    await ClearRecentFiles()
-    recentFiles.value = []
-  } else {
-    await ClearRecentFolders()
-    recentFolders.value = []
+  try {
+    if (section === 'files') {
+      await ClearRecentFiles()
+      recentFiles.value = []
+    } else {
+      await ClearRecentFolders()
+      recentFolders.value = []
+    }
+    // 通知菜单栏刷新「最近打开的文件」子菜单，否则列表仍是旧数据
+    document.dispatchEvent(new CustomEvent('recent-updated'))
+  } catch (e: any) {
+    ElMessage.error('清除失败: ' + (e?.message || ''))
   }
 }
 

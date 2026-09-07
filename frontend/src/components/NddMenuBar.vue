@@ -314,9 +314,9 @@ const SUBS = reactive<Record<string, Item[]>>({
     { label: '显示全部', cmd: 'show-all', chk: true, st: 'all' },
   ],
   'iconsize': [
-    { label: '24x24', cmd: 'iconsize-24', chk: true, grp: 'iconsize' },
-    { label: '36x36', cmd: 'iconsize-36', chk: true, grp: 'iconsize' },
-    { label: '48x48', cmd: 'iconsize-48', chk: true, grp: 'iconsize' },
+    { label: '16 小', cmd: 'iconsize-16', chk: true, grp: 'iconsize' },
+    { label: '20 中', cmd: 'iconsize-20', chk: true, grp: 'iconsize' },
+    { label: '24 大', cmd: 'iconsize-24', chk: true, grp: 'iconsize' },
   ],
   'enc-charset': [
     { label: '阿拉伯语', cmd: 'encode-ar' },
@@ -388,10 +388,13 @@ async function refreshRecentSubmenu() {
   }
 }
 
+// 点击菜单栏外部时收起展开的菜单（具名函数以便卸载时精确移除）
+function onDocumentClick(e: MouseEvent) {
+  if (!(e.target as HTMLElement).closest('.menubar')) closeAll()
+}
+
 onMounted(() => {
-  document.addEventListener('click', (e) => {
-    if (!(e.target as HTMLElement).closest('.menubar')) closeAll()
-  })
+  document.addEventListener('click', onDocumentClick)
   refreshRecentSubmenu()
   // 监听「最近文件已更新」事件，触发刷新（在 useFileOps.AddRecentEntry 后调用）
   document.addEventListener('recent-updated', refreshRecentSubmenu)
@@ -400,6 +403,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  document.removeEventListener('click', onDocumentClick)
   document.removeEventListener('recent-updated', refreshRecentSubmenu)
   window.removeEventListener('focus', refreshRecentSubmenu)
 })
@@ -409,7 +413,7 @@ const active = ref(-1)
 const subKey = ref('')
 const langLetter = ref('')
 const checks = ref<Record<string, boolean>>({ wrap: false, filelist: false, toolbar: true, statusbar: true, webaddr: false, spaces: false, eol: false, all: false })
-const radios = ref<Record<string, string>>({ le: 'CRLF', enc: 'UTF-8', iconsize: '36', lang: 'zh-CN', mark: '' })
+const radios = ref<Record<string, string>>({ le: 'CRLF', enc: 'UTF-8', iconsize: '20', lang: 'zh-CN', mark: '' })
 
 function isOpen(i: number) { return active.value === i }
 function open(i: number) { active.value = i; subKey.value = ''; langLetter.value = '' }
@@ -504,42 +508,42 @@ function pickLang(lang: string) { emit('cmd', 'set-lang', lang); closeAll() }
 
 <style scoped>
 .menubar {
-  display: flex; align-items: center; height: 24px; padding: 0 2px;
-  border-bottom: 1px solid #d1d5db; background: #f0f0f0; user-select: none;
-  font-family: 'Microsoft YaHei', sans-serif; font-size: 12px;
+  display: flex; align-items: center; height: var(--et-h-menu); padding: 0 4px; gap: 2px;
+  border-bottom: 1px solid var(--et-border); background: var(--et-bg-sunken); user-select: none;
+  font-size: 12px;
 }
-html.dark .menubar { background: #2d2d2d; border-color: #454545; }
 .menu-top { position: relative; }
-.menu-btn { padding: 0 6px; height: 22px; border: none; background: none; color: #333; border-radius: 3px; cursor: pointer; font-size: 12px; white-space: nowrap; }
-.menu-btn:hover, .menu-btn.active { background: #d0d0d0; }
-html.dark .menu-btn { color: #d4d4d4; }
-html.dark .menu-btn:hover, html.dark .menu-btn.active { background: #505050; }
+.menu-btn {
+  padding: 0 9px; height: 24px; border: none; background: none; color: var(--et-fg);
+  border-radius: var(--et-radius-sm); cursor: pointer; font-size: 12px; white-space: nowrap;
+  transition: background .12s ease, color .12s ease;
+}
+.menu-btn:hover, .menu-btn.active { background: var(--et-bg-active); }
 
 .menu-dd {
-  position: absolute; left: 0; top: 100%; z-index: 9999; min-width: 240px;
-  background: #fff; border: 1px solid #d1d5db; box-shadow: 0 4px 16px rgba(0,0,0,.18);
-  border-radius: 4px; padding: 2px 0; font-size: 12px;
+  position: absolute; left: 0; top: calc(100% + 4px); z-index: 9999; min-width: 220px;
+  background: var(--et-bg-elevated); border: 1px solid var(--et-border);
+  box-shadow: var(--et-shadow-md);
+  border-radius: var(--et-radius); padding: 4px; font-size: 12px;
 }
-html.dark .menu-dd { background: #1e1e1e; border-color: #454545; }
 
 .menu-row {
   display: flex; align-items: center; justify-content: space-between; position: relative;
-  padding: 4px 10px; cursor: pointer; white-space: nowrap; color: #333; min-width: 200px;
+  padding: 5px 10px; cursor: pointer; white-space: nowrap; color: var(--et-fg);
+  min-width: 200px; border-radius: var(--et-radius-sm);
+  transition: background .1s ease, color .1s ease;
 }
-.menu-row:hover, .menu-row.hl { background: #e8f0fe; color: #1a73e8; }
-html.dark .menu-row { color: #d4d4d4; }
-html.dark .menu-row:hover, html.dark .menu-row.hl { background: #094771; color: #60a5fa; }
+.menu-row:hover, .menu-row.hl { background: var(--et-accent-soft); color: var(--et-accent); }
 
-/* ★ 子菜单：嵌套在 .menu-row 内部，top:0 对齐当前行 */
+/* ★ 子菜单：嵌套在 .menu-row 内部，top:-4px 抵消父级 padding 对齐当前行 */
 .menu-sub {
-  position: absolute; left: 100%; top: 0; z-index: 10000; min-width: 240px;
-  background: #fff; border: 1px solid #d1d5db; box-shadow: 0 4px 16px rgba(0,0,0,.18);
-  border-radius: 4px; padding: 2px 0; font-size: 12px;
+  position: absolute; left: calc(100% + 4px); top: -5px; z-index: 10000; min-width: 220px;
+  background: var(--et-bg-elevated); border: 1px solid var(--et-border);
+  box-shadow: var(--et-shadow-md);
+  border-radius: var(--et-radius); padding: 4px; font-size: 12px;
 }
-html.dark .menu-sub { background: #1e1e1e; border-color: #454545; }
 
-.menu-sep { margin: 3px 0; height: 1px; background: #e5e5e5; }
-html.dark .menu-sep { background: #454545; }
-.menu-short, .menu-arrow { margin-left: 24px; font-size: 11px; color: #999; }
-.blue { color: #2563eb; }
+.menu-sep { margin: 4px 6px; height: 1px; background: var(--et-border); }
+.menu-short, .menu-arrow { margin-left: 24px; font-size: 11px; color: var(--et-fg-subtle); }
+.blue { color: var(--et-accent); }
 </style>

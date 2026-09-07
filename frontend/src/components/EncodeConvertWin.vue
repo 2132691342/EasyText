@@ -23,7 +23,16 @@ const extFilter = ref('all')
 const logText = ref('')
 const loading = ref(false)
 
-const targetCodeOptions = ['UTF-8', 'UTF-8-BOM', 'UTF-16-LE', 'UTF-16-BE', 'GBK']
+// 值必须与后端 SupportedEncodings 的 Name 完全一致。
+// 此前写成 UTF-16-LE / UTF-8-BOM 等后端不识别的名字，选中后转换必然失败。
+const targetCodeOptions = [
+  { value: 'UTF-8', label: 'UTF-8' },
+  { value: 'UTF-16LE', label: 'UTF-16 LE' },
+  { value: 'UTF-16BE', label: 'UTF-16 BE' },
+  { value: 'GBK', label: '简体中文 (GBK)' },
+  { value: 'GB18030', label: '简体中文 (GB18030)' },
+  { value: 'Big5', label: '繁体中文 (Big5)' },
+]
 const extOptions = [
   { value: 'all', label: '所有支持的文件扩展名' },
   { value: 'txt', label: '*.txt' },
@@ -207,7 +216,7 @@ watch(() => props.visible, (v) => {
                 <div class="flex items-center gap-2 mb-2">
                   <label class="text-xs text-gray-600 dark:text-gray-300 w-20">转换到编码:</label>
                   <select v-model="targetCode" class="flex-1 px-2 py-1 text-xs border border-gray-300 dark:border-gray-500 rounded bg-white dark:bg-[#1e1e1e] dark:text-gray-200">
-                    <option v-for="c in targetCodeOptions" :key="c" :value="c">{{ c }}</option>
+                    <option v-for="c in targetCodeOptions" :key="c.value" :value="c.value">{{ c.label }}</option>
                   </select>
                 </div>
                 <div class="flex items-center gap-2">

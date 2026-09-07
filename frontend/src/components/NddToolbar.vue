@@ -17,7 +17,7 @@ function tglAuto() { autoSave.value = !autoSave.value; emit('toolbar-command', '
 </script>
 
 <template>
-  <div class="toolbar flex items-center h-7 px-0.5 border-b border-gray-300 dark:border-gray-700 bg-[#f0f0f0] dark:bg-[#2d2d2d] overflow-x-auto select-none">
+  <div class="toolbar flex items-center px-1 overflow-x-auto select-none">
     <!-- 1-7 文件 -->
     <button class="tb" title="新建 (Ctrl+T)" @click="cmd('new-file')"><FileText :size="iconSize"/></button>
     <button class="tb" title="打开 (Ctrl+O)" @click="cmd('open-file')"><FolderOpen :size="iconSize"/></button>
@@ -82,14 +82,25 @@ function tglAuto() { autoSave.value = !autoSave.value; emit('toolbar-command', '
 </template>
 
 <style scoped>
-.toolbar{font-size:12px}
-.tb{display:inline-flex;align-items:center;justify-content:center;width:24px;height:22px;border:1px solid transparent;background:transparent;color:#4b5563;border-radius:2px;cursor:pointer;padding:0;margin:0 1px;transition:all .1s;flex-shrink:0}
-.tb:hover:not(:disabled){background:rgba(59,130,246,.12);border-color:rgba(59,130,246,.3);color:#3b82f6}
-.tb:disabled{opacity:.3;cursor:not-allowed}
-.tbd{color:#3b82f6}
-.tba{background:rgba(59,130,246,.18);color:#3b82f6;border-color:rgba(59,130,246,.4)}
-.sep{width:1px;height:16px;background:rgba(0,0,0,.15);margin:0 3px;flex-shrink:0}
-html.dark .tb{color:#bebebe}
-html.dark .tb:hover:not(:disabled){background:rgba(96,165,250,.15);border-color:rgba(96,165,250,.4);color:#60a5fa}
-html.dark .sep{background:rgba(255,255,255,.12)}
+.toolbar {
+  font-size: 12px;
+  height: var(--et-h-toolbar);
+  background: var(--et-bg-sunken);
+  border-bottom: 1px solid var(--et-border);
+}
+.tb {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px;
+  border: none; background: transparent; color: var(--et-fg-muted);
+  border-radius: var(--et-radius); cursor: pointer; padding: 0; margin: 0 1px;
+  transition: background .12s ease, color .12s ease; flex-shrink: 0;
+}
+.tb:hover:not(:disabled) { background: var(--et-bg-hover); color: var(--et-fg); }
+.tb:active:not(:disabled) { background: var(--et-bg-active); }
+.tb:disabled { opacity: .32; cursor: not-allowed; }
+/* 有未保存改动 */
+.tbd { color: var(--et-accent); }
+/* 开关处于激活态（自动保存 / tail 跟踪） */
+.tba { background: var(--et-accent-soft); color: var(--et-accent); }
+.sep { width: 1px; height: 18px; background: var(--et-border); margin: 0 4px; flex-shrink: 0; }
 </style>

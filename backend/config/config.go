@@ -28,6 +28,9 @@ type EditorConfig struct {
 	LineNumbers      bool   `json:"lineNumbers"`
 	AutoSave         bool   `json:"autoSave"`
 	AutoSaveInterval int    `json:"autoSaveInterval"` // seconds
+	// AutoSaveMode 自动保存触发方式：interval（定时）/ blur（失焦）/ both（两者）。
+	// 此前该值只存在于前端内存，重启后回落到 interval，导致「失焦自动保存」形同未实现。
+	AutoSaveMode     string `json:"autoSaveMode"`
 	HighlightLine    bool   `json:"highlightLine"`
 	BracketPairColor bool   `json:"bracketPairColor"`
 	Minimap          bool   `json:"minimap"`
@@ -97,6 +100,7 @@ var defaultConfig = AppConfig{
 		LineNumbers:      true,
 		AutoSave:         false,
 		AutoSaveInterval: 60,
+		AutoSaveMode:     "interval",
 		HighlightLine:    true,
 		BracketPairColor: true,
 		Minimap:          true,
@@ -321,6 +325,9 @@ func mergeConfig(defaults, loaded AppConfig) AppConfig {
 	result.Editor.AutoSave = loaded.Editor.AutoSave
 	if loaded.Editor.AutoSaveInterval > 0 {
 		result.Editor.AutoSaveInterval = loaded.Editor.AutoSaveInterval
+	}
+	if loaded.Editor.AutoSaveMode != "" {
+		result.Editor.AutoSaveMode = loaded.Editor.AutoSaveMode
 	}
 	result.Editor.HighlightLine = loaded.Editor.HighlightLine
 	result.Editor.BracketPairColor = loaded.Editor.BracketPairColor

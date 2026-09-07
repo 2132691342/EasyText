@@ -71,7 +71,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div v-if="tab" class="ndd-statusbar flex items-center h-6 border-t border-gray-300 dark:border-gray-700 bg-[#f0f0f0] dark:bg-[#007acc] text-[11px] text-gray-700 dark:text-white select-none" @contextmenu="onContextMenu">
+  <div v-if="tab" class="ndd-statusbar flex items-center text-[11px] select-none" @contextmenu="onContextMenu">
     <span v-if="isItemVisible('zoom')" class="status-item px-2 cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-800" @click="changeZoom(10)">Zoom: {{ zoomLevel }}%</span>
     <span v-if="isItemVisible('zoom')" class="status-sep" />
     <span v-if="isItemVisible('lang')" class="status-item px-2">Lang: {{ langLabel }}</span>
@@ -93,8 +93,8 @@ onUnmounted(() => {
     <span v-if="tab.path && isItemVisible('filePath')" class="status-item px-2 truncate max-w-[50%]" :title="tab.path">{{ tab.path }}</span>
     <span v-else-if="isItemVisible('filePath')" class="status-item px-2 text-gray-500 dark:text-gray-300">untitled</span>
   </div>
-  <div v-else class="ndd-statusbar flex items-center h-6 border-t border-gray-300 dark:border-gray-700 bg-[#f0f0f0] dark:bg-[#007acc] text-[11px] text-gray-600 dark:text-white" @contextmenu="onContextMenu">
-    <span class="px-3">Ready</span>
+  <div v-else class="ndd-statusbar flex items-center text-[11px] select-none" @contextmenu="onContextMenu">
+    <span class="px-3">就绪</span>
   </div>
 
   <!-- 🆕 V2.0.0 右键自定义菜单 -->
@@ -124,13 +124,24 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.status-item { white-space: nowrap; transition: background 0.1s; }
-.status-sep { width: 1px; height: 14px; background: rgba(0,0,0,0.12); flex-shrink: 0; }
-html.dark .status-sep { background: rgba(255,255,255,0.2); }
-.sbar-select {
-  min-height: 18px; height: 18px; padding: 0 4px; font-size: 11px;
-  background: transparent; border: 1px solid rgba(0,0,0,0.1); border-radius: 2px;
-  color: inherit; outline: none; cursor: pointer;
+.ndd-statusbar {
+  height: var(--et-h-status);
+  background: var(--et-bg-sunken);
+  border-top: 1px solid var(--et-border);
+  color: var(--et-fg-muted);
 }
-html.dark .sbar-select { border-color: rgba(255,255,255,0.15); }
+.status-item {
+  white-space: nowrap;
+  border-radius: var(--et-radius-sm);
+  transition: background .1s ease, color .1s ease;
+}
+.status-item:hover { background: var(--et-bg-hover); color: var(--et-fg); }
+.status-sep { width: 1px; height: 14px; background: var(--et-border); flex-shrink: 0; }
+.sbar-select {
+  min-height: 18px; height: 18px; margin: 0 4px; padding: 0 4px; font-size: 11px;
+  background: transparent; border: 1px solid transparent; border-radius: var(--et-radius-sm);
+  color: inherit; outline: none; cursor: pointer;
+  transition: background .12s ease, border-color .12s ease;
+}
+.sbar-select:hover { background: var(--et-bg-hover); border-color: var(--et-border); }
 </style>

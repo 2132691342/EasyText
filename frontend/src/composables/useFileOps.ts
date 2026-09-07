@@ -27,12 +27,12 @@ import {
   SaveSession,
   AddRecentEntry,
   CheckDraftConflict,
-  ShowConfirmDialog,
   GetDraft,
 } from '../../wailsjs/go/main/App'
 import type { useEditorStore } from '@/stores/editorStore'
 import type { useFileStore } from '@/stores/fileStore'
 import { getFileExtension, getTabViewType } from '@/utils'
+import { confirmDialog } from '@/utils/confirm'
 
 type Ed = ReturnType<typeof useEditorStore>
 type Fs = ReturnType<typeof useFileStore>
@@ -81,10 +81,12 @@ export function useFileOps(opts: UseFileOpsOptions) {
           // 草稿冲突处理：用户选择恢复则用草稿内容
           const conflict = await CheckDraftConflict(path).catch(() => 0)
           if (conflict === 1) {
-            const ok = await ShowConfirmDialog(
-              '发现草稿',
-              `"${path.split(/[/\\]/).pop()}" 有未保存的草稿，是否恢复草稿内容？`,
-            )
+            const ok = await confirmDialog({
+              title: '发现草稿',
+              message: `"${path.split(/[/\\]/).pop()}" 有未保存的草稿，是否恢复草稿内容？`,
+              confirmText: '恢复草稿',
+              cancelText: '使用磁盘内容',
+            })
             if (ok) {
               const draft = await GetDraft(path)
               if (draft) {

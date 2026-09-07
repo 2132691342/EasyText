@@ -13,17 +13,31 @@ func (h *Handler) ShowMessageDialog(title, message string, dialogType runtime.Di
 	})
 }
 
-// ShowConfirmDialog 显示确认对话框
+// ShowConfirmDialog 显示确认对话框。
+//
+// ⚠ 平台差异（曾导致线上 Bug）：Windows/Linux 上 MessageDialog 的 Buttons 被框架忽略，
+// 返回值只能是标准按钮文本（Yes/No/Ok/Cancel/...），自定义中文按钮文案不生效。
+// 因此判定必须基于标准文本集合，不能写成 result == "是"（恒为 false）。
+//
+// 需要自定义按钮文案、或希望弹窗不夺取窗口焦点时，应改用前端模态层
+// （见 frontend/src/utils/confirm.ts），本方法仅作兜底。
 func (h *Handler) ShowConfirmDialog(title, message string) (bool, error) {
 	result, err := runtime.MessageDialog(h.Ctx, runtime.MessageDialogOptions{
 		Title:         title,
 		Message:       message,
 		Type:          runtime.QuestionDialog,
-		Buttons:       []string{"是", "否"},
-		DefaultButton: "是",
-		CancelButton:  "否",
+		DefaultButton: "Yes",
+		CancelButton:  "No",
 	})
-	return result == "是", err
+	if err != nil {
+		return false, err
+	}
+	switch result {
+	case "Yes", "Ok", "Continue", "Retry", "Try Again", "是", "确定":
+		return true, nil
+	default:
+		return false, nil
+	}
 }
 
 // === System Info ===

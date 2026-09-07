@@ -166,18 +166,9 @@ function startNewFile() {
     newItemName.value = ''
     setTimeout(() => newItemInput.value?.focus(), 100)
   } else {
-    // For files, we need to create in the same parent directory
-    // This is handled differently — we set the state on the parent
-    // But since we're a recursive component, we emit to parent
-    // Simplification: just create in the file's parent directory
-    const parentPath = getParentPath(props.node.path)
-    const sep = getSep(props.node.path)
-    const newName = 'new_file.txt'
-    const fullPath = parentPath + sep + newName
-    CreateDirectory(parentPath + sep + '__new_placeholder__').catch(() => {})
-    // Actually, we'll show the inline input on this node's "parent level"
-    // Since we can't easily traverse up, we just create at parent level
-    // For now, use a simpler approach: just create at parent directly
+    // 在文件节点上新建：目标目录是该文件的父目录（confirmNewItem 会据此拼路径）。
+    // 这里只打开内联输入框，不写磁盘——早期版本会先创建一个 __new_placeholder__
+    // 目录，属于残留调试代码，会在用户磁盘上留下垃圾目录。
     isNewItem.value = true
     newItemIsDir.value = false
     newItemName.value = ''

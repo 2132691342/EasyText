@@ -2,6 +2,52 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================
+   设计令牌（Design Tokens）
+   此前各组件各自硬编码色值（菜单 #f0f0f0、标签 #e8e8e8、状态栏深色 #007acc…），
+   导致深浅色下界面割裂。统一为语义化变量，组件只引用变量不再写字面色值。
+   ============================================================ */
+:root {
+  --et-bg: #ffffff;            /* 编辑区主背景 */
+  --et-bg-sunken: #f7f8fa;     /* 框架区：菜单/工具/标签/状态栏 */
+  --et-bg-elevated: #ffffff;   /* 浮层：下拉菜单、弹窗 */
+  --et-bg-hover: rgba(0, 0, 0, .06);
+  --et-bg-active: rgba(0, 0, 0, .09);
+  --et-border: #e3e5e8;
+  --et-fg: #1f2328;
+  --et-fg-muted: #6b7280;
+  --et-fg-subtle: #9ca3af;
+  --et-accent: #3b82f6;
+  --et-accent-soft: rgba(59, 130, 246, .12);
+  --et-accent-contrast: #ffffff;
+  --et-shadow-sm: 0 1px 2px rgba(0, 0, 0, .06);
+  --et-shadow-md: 0 6px 20px rgba(0, 0, 0, .12), 0 2px 6px rgba(0, 0, 0, .06);
+  --et-radius: 6px;
+  --et-radius-sm: 4px;
+  /* 框架各条高度 */
+  --et-h-menu: 32px;
+  --et-h-toolbar: 38px;
+  --et-h-tab: 36px;
+  --et-h-status: 26px;
+}
+
+html.dark {
+  --et-bg: #1e1e1e;
+  --et-bg-sunken: #252526;
+  --et-bg-elevated: #2b2b2d;
+  --et-bg-hover: rgba(255, 255, 255, .08);
+  --et-bg-active: rgba(255, 255, 255, .12);
+  --et-border: #3a3a3c;
+  --et-fg: #e4e4e7;
+  --et-fg-muted: #a1a1aa;
+  --et-fg-subtle: #71717a;
+  --et-accent: #60a5fa;
+  --et-accent-soft: rgba(96, 165, 250, .16);
+  --et-accent-contrast: #0b1220;
+  --et-shadow-sm: 0 1px 2px rgba(0, 0, 0, .4);
+  --et-shadow-md: 0 8px 24px rgba(0, 0, 0, .55), 0 2px 6px rgba(0, 0, 0, .35);
+}
+
 /* Base styles */
 html {
   height: 100%;
@@ -123,28 +169,19 @@ textarea,
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
-}
-
-html.dark ::-webkit-scrollbar-track {
-  background: #2d2d2d;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
-  border-radius: 5px;
-}
-
-html.dark ::-webkit-scrollbar-thumb {
-  background: #424242;
+  background: var(--et-bg-active);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #a8a8a8;
-}
-
-html.dark ::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  background: var(--et-fg-subtle);
+  background-clip: content-box;
 }
 
 /* Tab styles */
@@ -316,67 +353,42 @@ html.dark select:focus {
   position: fixed;
   z-index: 9999;
   min-width: 180px;
-  padding: 4px 0;
-  background-color: #fff;
-  border: 1px solid #e5e5e5;
-  border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 4px rgba(0, 0, 0, 0.08);
+  padding: 4px;
+  background-color: var(--et-bg-elevated);
+  border: 1px solid var(--et-border);
+  border-radius: var(--et-radius);
+  box-shadow: var(--et-shadow-md);
   user-select: none;
   -webkit-user-select: none;
-}
-
-html.dark .context-menu {
-  background-color: #2d2d2d;
-  border-color: #404040;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
 .context-menu-item {
   display: flex;
   align-items: center;
-  padding: 6px 12px;
+  padding: 6px 10px;
   font-size: 13px;
   cursor: pointer;
-  color: #333;
-  transition: background-color 0.1s;
-}
-
-html.dark .context-menu-item {
-  color: #d4d4d4;
+  border-radius: var(--et-radius-sm);
+  color: var(--et-fg);
+  transition: background-color .1s ease, color .1s ease;
 }
 
 .context-menu-item:hover {
-  background-color: rgba(0, 0, 0, 0.06);
-}
-
-html.dark .context-menu-item:hover {
-  background-color: rgba(255, 255, 255, 0.08);
+  background-color: var(--et-bg-hover);
 }
 
 .context-menu-item.danger {
-  color: #dc2626;
-}
-
-html.dark .context-menu-item.danger {
-  color: #f87171;
+  color: #ef4444;
 }
 
 .context-menu-item.danger:hover {
-  background-color: rgba(220, 38, 38, 0.08);
-}
-
-html.dark .context-menu-item.danger:hover {
-  background-color: rgba(248, 113, 113, 0.12);
+  background-color: rgba(239, 68, 68, .1);
 }
 
 .context-menu-divider {
   height: 1px;
-  margin: 4px 8px;
-  background-color: #e5e5e5;
-}
-
-html.dark .context-menu-divider {
-  background-color: #404040;
+  margin: 4px 6px;
+  background-color: var(--et-border);
 }
 
 /* --- Element Plus dark mode overrides --- */

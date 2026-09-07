@@ -14,8 +14,8 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="h-screen w-screen bg-white dark:bg-[#1e1e1e]">
+  <div class="h-screen w-screen bg-[var(--et-bg)] text-[var(--et-fg)]">
     <MainLayout v-if="ready" />
-    <div v-else class="flex items-center justify-center h-full text-gray-400 text-sm">Loading...</div>
+    <div v-else class="flex items-center justify-center h-full text-[var(--et-fg-subtle)] text-sm">正在加载…</div>
   </div>
 </template>

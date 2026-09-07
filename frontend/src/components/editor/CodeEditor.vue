@@ -819,6 +819,13 @@ function toggleShowWhitespace(show: boolean) {
 }
 
 // ---- Case transform ----
+/** 按非字母数字切词，统一小写（供 snake/kebab/camel/pascal 转换共用） */
+function splitWords(text: string): string[] {
+  return text.trim().split(/[^A-Za-z0-9]+/).filter(Boolean).map(w => w.toLowerCase())
+}
+function toPascalWords(text: string): string {
+  return splitWords(text).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('')
+}
 function transformCase(type: string) {
   if (!editorView) return
   const state = editorView.state
@@ -835,6 +842,15 @@ function transformCase(type: string) {
     case 'sentence': result = text.replace(/(^\w|[.!?]\s+\w)/g, c => c.toUpperCase()); break
     case 'sentence-blend': result = text.replace(/(^\w|[.!?]\s+\w)/g, c => c.toUpperCase()); break
     case 'random': result = [...text].map(c => Math.random() > 0.5 ? c.toUpperCase() : c.toLowerCase()).join(''); break
+    // ---- 命名风格转换（列块编辑窗口的 case-pascal/camel/snake/kebab）----
+    case 'pascal': result = toPascalWords(text); break
+    case 'camel': {
+      const p = toPascalWords(text)
+      result = p ? p.charAt(0).toLowerCase() + p.slice(1) : p
+      break
+    }
+    case 'snake': result = splitWords(text).join('_'); break
+    case 'kebab': result = splitWords(text).join('-'); break
   }
   if (result !== text) {
     const from = isSelection ? selection.from : state.doc.lineAt(selection.from).from
@@ -1276,6 +1292,18 @@ function markKeywords(keywords: string[]) {
   if (ranges.length) editorView.dispatch({ effects: setMarks.of(ranges) })
 }
 
+/**
+ * 高亮一组指定位置的匹配项（供 FindWin「当前文档全部查找」使用）。
+ * 与 markAll 的区别：直接接收位置数组，不做正则匹配，并用固定查找色而非当前标记色。
+ */
+function highlightRanges(idxs: number[], len: number) {
+  if (!editorView || !idxs?.length) return
+  const length = len > 0 ? len : 1
+  editorView.dispatch({
+    effects: setMarks.of(idxs.map(i => ({ from: i, to: i + length, color: 0 }))),
+  })
+}
+
 // ---- 括号跳转 ----
 function gotoBracket() {
   if (!editorView) return
@@ -1618,6 +1646,13 @@ function handleEditorCommand(e: Event) {
   if (!cmd) return
   cmd = CMD_ALIASES[cmd] || cmd
 
+  // ---- 查找词同步 ----
+  // FindWin 每次执行查找都会派发 set-search-term。缺失该分支时 lastSearchTerm 恒为空，
+  // 导致 F3「查找下一个」/「查找上一个」在 doFindAction 里直接 return，完全失效。
+  if (cmd === 'set-search-term') { setSearchTerm(String(args[0] ?? '')); return }
+  // 高亮当前文档的所有匹配项（FindWin「当前文档全部查找」）
+  if (cmd === 'highlight-all') { highlightRanges(args[0] as number[], Number(args[1] ?? 0)); return }
+
   // Standard operations
   if (cmd === 'undo') undoAction()
   else if (cmd === 'redo') redoAction()
@@ -1644,7 +1679,12 @@ function handleEditorCommand(e: Event) {
   else if (cmd === 'word-highlight') highlightWordAtCursor()
   else if (cmd === 'mark-color') highlightWordAtCursor()
   // ---- 多色标记 ----
-  else if (cmd === 'mark-all') markAll(lastSearchTerm)
+  // FindWin「标记」tab 传入的是匹配位置数组 + 长度（直接高亮）；
+  // 菜单/快捷键无参调用时回退到 lastSearchTerm 做全文匹配标记。
+  else if (cmd === 'mark-all') {
+    if (Array.isArray(args[0])) highlightRanges(args[0] as number[], Number(args[1] ?? 0))
+    else markAll(String(args[0] ?? lastSearchTerm))
+  }
   else if (cmd === 'mark-red') { currentMarkColor = 1; markSelectionOrWord() }
   else if (cmd === 'mark-yellow') { currentMarkColor = 0; markSelectionOrWord() }
   else if (cmd === 'mark-blue') { currentMarkColor = 2; markSelectionOrWord() }
@@ -1701,7 +1741,7 @@ function handleEditorCommand(e: Event) {
   else if (cmd === 'delete-bookmark-lines') deleteBookmarkLines()
   else if (cmd === 'delete-unbookmark-lines') deleteUnbookmarkLines()
   else if (cmd === 'paste-bookmark-lines') pasteBookmarkLines()
-  else if (cmd === 'insert-text' && args[0])
+  else if ((cmd === 'insert-text' || cmd === 'insert-snippet') && args[0])
     editorView?.dispatch({ changes: { from: editorView.state.selection.main.head, insert: String(args[0]) } })
   else if (cmd === 'goto-line' && args[0])
     gotoLine(args[0] as number)

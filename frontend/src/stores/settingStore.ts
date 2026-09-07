@@ -16,6 +16,7 @@ export const useSettingStore = defineStore('setting', () => {
       lineNumbers: true,
       autoSave: false,
       autoSaveInterval: 60,
+      autoSaveMode: 'interval',
       highlightLine: true,
       bracketPairColor: true,
       minimap: true,
@@ -56,7 +57,7 @@ export const useSettingStore = defineStore('setting', () => {
       showWebAddr: false,
       fileTreeWidth: 250,
       zoomLevel: 100,
-      toolbarIconSize: 24,
+      toolbarIconSize: 18,
       favorites: [],
       lastFolder: '',
       statusBarItems: {
@@ -297,7 +298,12 @@ export const useSettingStore = defineStore('setting', () => {
   }
 
   // ============ 🆕 V2.0.0 自动保存模式 ============
-  const autoSaveMode = ref<'interval' | 'blur' | 'both'>('interval')
+  // 直接绑定到 config.editor.autoSaveMode：此前是纯内存 ref，重启后回落到
+  // interval，使「失焦自动保存」在用户看来根本没有生效过。
+  const autoSaveMode = computed<'interval' | 'blur' | 'both'>({
+    get: () => config.value?.editor?.autoSaveMode || 'interval',
+    set: (mode) => { if (config.value) config.value.editor.autoSaveMode = mode },
+  })
 
   function setAutoSaveMode(mode: 'interval' | 'blur' | 'both') {
     autoSaveMode.value = mode
@@ -340,12 +346,15 @@ export const useSettingStore = defineStore('setting', () => {
   }
 
   // ============ 🆕 V2.0.0 状态栏/工具栏自定义 ============
+  // 开关后必须落盘：否则重启恢复默认，用户会认为勾选框失灵
   function toggleStatusBarItem(item: string) {
     config.value.ui.statusBarItems[item] = !config.value.ui.statusBarItems[item]
+    void saveConfig()
   }
 
   function toggleToolbarItem(item: string) {
     config.value.ui.toolbarItems[item] = !config.value.ui.toolbarItems[item]
+    void saveConfig()
   }
 
   // ============ 🆕 V2.0.0 忽略模式 ============

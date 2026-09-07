@@ -3,16 +3,16 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useEditorStore, useFileStore, useSettingStore } from '@/stores'
 import { getFileExtension, getTabViewType } from '@/utils'
-import type { Macro } from '@/types'
 import {
   OpenFileDialog, ReadFile, SaveFile, SaveFileDialog,
-  ShowConfirmDialog, ReadFileBytes, ConvertToUTF8,
+  ReadFileBytes, ConvertToUTF8,
   ConvertFromUTF8, RenameFile, AutoSaveDraft,
   GetRecentFiles, GetRecentFolders,
 } from '../../wailsjs/go/main/App'
 import { useCommands } from '@/composables/useCommands'
 import { useFileOps } from '@/composables/useFileOps'
 import { useTailWatcher } from '@/composables/useTailWatcher'
+import { confirmDialog, confirmSaveDiscard } from '@/utils/confirm'
 
 // ---- Components ----
 import NddMenuBar from './NddMenuBar.vue'
@@ -134,54 +134,78 @@ async function closeTab(id: string) {
   const t = ed.tabs.find(x => x.id === id)
   if (!t) return
   if (t.isDirty) {
-    const ok = await ShowConfirmDialog('保存', '是否保存更改？')
-    if (ok && t.path) { try { await SaveFile(t.path, t.content, t.encoding) } catch (e) { console.warn(e) } }
+    const choice = await confirmSaveDiscard(t.name)
+    if (choice === 'cancel') return
+    if (choice === 'save' && t.path) {
+      try {
+        await SaveFile(t.path, t.content, t.encoding)
+      } catch {
+        ElMessage.error('保存失败，已取消关闭')
+        return
+      }
+    }
   }
   ed.closeTab(id); saveSession()
 }
 
 async function closeAll() {
   if (ed.hasUnsavedChanges) {
-    const ok = await ShowConfirmDialog('关闭所有', '有未保存的更改，确定关闭？')
+    const ok = await confirmDialog({
+      title: '关闭所有',
+      message: `有 ${ed.dirtyTabs.length} 个文件未保存，确定关闭全部？`,
+      confirmText: '全部关闭',
+      danger: true,
+    })
     if (!ok) return
   }
   ed.closeAllTabs(); saveSession()
 }
 
-function closeOthers() {
+async function closeOthers() {
   if (!ed.activeTab) return
   const dirtyOthers = ed.tabs.filter(t => t.id !== ed.activeTab!.id && t.isDirty)
   if (dirtyOthers.length > 0) {
-    ShowConfirmDialog('关闭其他', `有 ${dirtyOthers.length} 个文件未保存，是否继续关闭？`).then(ok => {
-      if (ok) { ed.closeOtherTabs(ed.activeTab!.id); saveSession() }
+    const ok = await confirmDialog({
+      title: '关闭其他',
+      message: `有 ${dirtyOthers.length} 个文件未保存，是否继续关闭？`,
+      confirmText: '关闭其他',
+      danger: true,
     })
-    return
+    if (!ok) return
   }
   ed.closeOtherTabs(ed.activeTab.id); saveSession()
 }
-function closeLeft() {
+
+async function closeLeft() {
   const idx = ed.activeTabIndex
   if (idx <= 0) return
   const leftTabs = ed.tabs.slice(0, idx)
   const dirtyLeft = leftTabs.filter(t => t.isDirty)
   if (dirtyLeft.length > 0) {
-    ShowConfirmDialog('关闭左侧', `有 ${dirtyLeft.length} 个文件未保存，是否继续关闭？`).then(ok => {
-      if (ok) { for (const t of leftTabs) ed.closeTab(t.id); saveSession() }
+    const ok = await confirmDialog({
+      title: '关闭左侧',
+      message: `有 ${dirtyLeft.length} 个文件未保存，是否继续关闭？`,
+      confirmText: '关闭左侧',
+      danger: true,
     })
-    return
+    if (!ok) return
   }
   for (const t of leftTabs) ed.closeTab(t.id); saveSession()
 }
-function closeRight() {
+
+async function closeRight() {
   const idx = ed.activeTabIndex
   if (idx >= ed.tabs.length - 1) return
   const rightTabs = ed.tabs.slice(idx + 1)
   const dirtyRight = rightTabs.filter(t => t.isDirty)
   if (dirtyRight.length > 0) {
-    ShowConfirmDialog('关闭右侧', `有 ${dirtyRight.length} 个文件未保存，是否继续关闭？`).then(ok => {
-      if (ok) { for (const t of rightTabs) ed.closeTab(t.id); saveSession() }
+    const ok = await confirmDialog({
+      title: '关闭右侧',
+      message: `有 ${dirtyRight.length} 个文件未保存，是否继续关闭？`,
+      confirmText: '关闭右侧',
+      danger: true,
     })
-    return
+    if (!ok) return
   }
   for (const t of rightTabs) ed.closeTab(t.id); saveSession()
 }
@@ -237,17 +261,17 @@ function execEd(cmd: string, ...args: any[]) {
 const isMacroRecording = ref(false)
 function toggleMacroRecording() {
   if (ed.macroState.isRecording) {
-    ed.stopMacroRecording(); isMacroRecording.value = false; ElMessage.success('Macro recording stopped')
+    ed.stopMacroRecording(); isMacroRecording.value = false; ElMessage.success('宏录制已停止')
   } else {
-    ed.startMacroRecording(); isMacroRecording.value = true; ElMessage.success('Recording macro...')
+    ed.startMacroRecording(); isMacroRecording.value = true; ElMessage.success('开始录制宏…')
   }
 }
 function playCurrentMacro() {
   const list = ed.macroState.savedMacros
-  if (!list.length) { ElMessage.warning('No macros available'); return }
+  if (!list.length) { ElMessage.warning('暂无可用宏'); return }
   const m = list[list.length - 1]
   ed.playMacro(m.id)
-  ElMessage.success('Playing: ' + m.name)
+  ElMessage.success('正在播放：' + m.name)
 }
 
 
@@ -313,7 +337,7 @@ function onKeyDown(e: KeyboardEvent) {
   // 查找 / 替换 / 跳转全局快捷键（LogViewer/HexViewer 等不挂在 CodeMirror keymap，必须在这里兜底）
   else if (c && !e.shiftKey && (e.key === 'f' || e.key === 'F')) { e.preventDefault(); onMenuCmd('find') }
   else if (c && !e.shiftKey && (e.key === 'h' || e.key === 'H')) { e.preventDefault(); onMenuCmd('replace') }
-  else if (c && !e.shiftKey && (e.key === 'g' || e.key === 'G')) { e.preventDefault(); execEd('goto-line', ed.activeTab?.cursorPosition?.line ?? 1) }
+  else if (c && !e.shiftKey && (e.key === 'g' || e.key === 'G')) { e.preventDefault(); onMenuCmd('goto-line') }
   else if (c && e.shiftKey && (e.key === 'f' || e.key === 'F')) { e.preventDefault(); onMenuCmd('search-files') }
   else if (c && e.shiftKey && (e.key === 'd' || e.key === 'D')) { e.preventDefault(); onMenuCmd('find-dir') }
   // Tab 切换
@@ -349,6 +373,14 @@ function toggleAutoTheme() {
 // 🆕 V2.0.0 统一最近访问入口：通过下拉对话框展示，替代旧版文本弹窗
 async function showRecentFiles() { recentDialogTab.value = 'files'; showRecentDialog.value = true }
 async function showRecentFolders() { recentDialogTab.value = 'folders'; showRecentDialog.value = true }
+
+// 打开最近文件夹：必须同时展开目录树面板，否则用户看不到任何变化
+function openRecentFolder(path: string) {
+  fs.setDirectory(path)
+  showFileTree.value = true
+  sidebarTab.value = 'tree'
+  if (ss.config) { ss.config.ui.lastFolder = path; ss.saveConfig() }
+}
 
 async function manageDrafts() {
   try {
@@ -480,6 +512,20 @@ async function selectCompareFile(side: 'left' | 'right') {
     if (p) { if (side === 'left') diffLeftPath.value = p; else diffRightPath.value = p; showDiff.value = true; ElMessage.success(`已选择${side === 'left' ? '左侧' : '右侧'}文件`) }
   } catch (e) { console.warn(e) }
 }
+
+// 标签栏右键「选择左侧/右侧对比文件」：直接设置路径并打开对比视图。
+// 此前只派发事件但无人监听，用户点了只看到提示、对比窗口永不出现。
+function onTabCompareFile(side: 'left' | 'right') {
+  return (e: Event) => {
+    const path = (e as CustomEvent).detail as string
+    if (!path) return
+    if (side === 'left') diffLeftPath.value = path
+    else diffRightPath.value = path
+    showDiff.value = true
+  }
+}
+const onSelectCmpLeft = onTabCompareFile('left')
+const onSelectCmpRight = onTabCompareFile('right')
 async function binaryCompare() {
   try {
     const left = await OpenFileDialog(); if (!left) return
@@ -495,15 +541,19 @@ async function binaryCompare() {
 }
 
 // ---- 宏：保存 / 多次运行 ----
+// 宏步骤在前端录制（editorStore.currentMacro），持久化走 localStorage
+// （saveMacros/loadMacros）。此前调后端 SaveCurrentMacro（后端录制的 steps
+// 恒为空）再 GetMacros 整体覆盖本地列表，导致用户录制的步骤被清空、回放无效。
 async function saveCurrentMacro() {
   try {
     const { value: name } = await ElMessageBox.prompt('请输入宏名称', '保存宏', {
       inputValue: `Macro ${ed.macroState.savedMacros.length + 1}`, confirmButtonText: '保存', cancelButtonText: '取消',
     })
     if (!name) return
-    const { SaveCurrentMacro, GetMacros } = await import('../../wailsjs/go/main/App')
-    await SaveCurrentMacro(name)
-    ed.macroState.savedMacros = (await GetMacros()) as unknown as Macro[]
+    const last = ed.macroState.savedMacros[ed.macroState.savedMacros.length - 1]
+    if (!last) { ElMessage.warning('没有可保存的宏，请先录制'); return }
+    ed.renameMacro(last.id, name)
+    ed.saveMacros()
     ElMessage.success('宏已保存：' + name)
   } catch (e) { console.warn(e) }
 }
@@ -562,47 +612,88 @@ const { tailingTabId, isTailing: tailingStatus, startTail, stopTail } = tailWatc
 
 // ---- 文件变化检测（窗口聚焦时） ----
 let lastFocusCheck = 0
-// 记录用户选择忽略外部变更的文件路径，避免重复提示
-const ignoredExternalChanges = new Set<string>()
+// 重入保护：检测过程中会 await 确认对话框，期间可能再次触发 focus 事件。
+// 没有这个标志，用户点完弹窗窗口重获焦点 → 再次检测 → 弹窗死循环。
+let checkingExternal = false
+// 用户已选择「忽略」的外部内容快照：path -> 当时的磁盘内容。
+// 只有磁盘内容再次发生变化才重新询问，避免同一变更反复打扰。
+const dismissedExternal = new Map<string, string>()
+
+/** 把磁盘内容写回标签页，并重置脏标记（重新加载后不应视为未保存）。 */
+function applyExternalContent(tabId: string, diskContent: string) {
+  ed.updateTabContent(tabId, diskContent)
+  const tab = ed.tabs.find(x => x.id === tabId)
+  if (tab) { tab.originalContent = diskContent; tab.isDirty = false }
+}
 
 async function checkExternalChanges() {
   const now = Date.now()
   // 节流：两次检测间隔至少 3 秒
   if (now - lastFocusCheck < 3000) return
   lastFocusCheck = now
-  for (const t of ed.tabs) {
-    if (!t.path || t.isDirty) continue
-    // 如果用户已选择忽略此文件的外部变更，跳过检测
-    if (ignoredExternalChanges.has(t.path)) continue
-    try {
-      const r = await ReadFile(t.path)
-      if (r && r.content !== t.originalContent) {
-        const ok = await ShowConfirmDialog('文件已变更', `"${t.name}" 已被外部修改，是否重新加载？`)
-        if (ok) {
-          // 重新加载：更新内容并同步 originalContent，不标记为脏
-          ed.updateTabContent(t.id, r.content)
-          // 同步 originalContent，避免后续检测仍然认为文件有变化
-          const tab = ed.tabs.find(x => x.id === t.id)
-          if (tab) tab.originalContent = r.content
-          ElMessage.success(`已重新加载: ${t.name}`)
-        } else {
-          // 用户选择不重新加载：记录到忽略集合，避免重复提示
-          // 注意：不标记为脏，这样关闭时不会提示保存
-          ignoredExternalChanges.add(t.path)
+  if (checkingExternal) return
+  checkingExternal = true
+  try {
+    // 复制一份快照遍历：await 期间 tabs 可能被用户改动
+    for (const t of [...ed.tabs]) {
+      if (!t.path) continue
+      try {
+        const r = await ReadFile(t.path)
+        if (!r) continue
+        const disk = r.content
+        // 磁盘内容与基线一致 → 没有外部变更，清除忽略记录
+        if (disk === (t.originalContent ?? '')) {
+          dismissedExternal.delete(t.path)
+          continue
         }
-      }
-    } catch { /* 文件可能已被删除，忽略 */ }
+        // 该版本用户已明确忽略，且内容没有再变 → 不再打扰
+        if (dismissedExternal.get(t.path) === disk) continue
+
+        if (t.isDirty) {
+          const ok = await confirmDialog({
+            title: '文件冲突',
+            message: `"${t.name}" 在外部被修改，同时你有未保存的更改。\n重新加载会丢失本地更改，是否继续？`,
+            confirmText: '重新加载（丢弃本地更改）',
+            cancelText: '保留我的更改',
+            danger: true,
+          })
+          if (ok) {
+            applyExternalContent(t.id, disk)
+            dismissedExternal.delete(t.path)
+            ElMessage.success(`已重新加载: ${t.name}`)
+          } else {
+            dismissedExternal.set(t.path, disk)
+          }
+        } else {
+          const ok = await confirmDialog({
+            title: '文件已变更',
+            message: `"${t.name}" 已被外部修改，是否重新加载？`,
+            confirmText: '重新加载',
+            cancelText: '忽略',
+          })
+          if (ok) {
+            applyExternalContent(t.id, disk)
+            dismissedExternal.delete(t.path)
+            ElMessage.success(`已重新加载: ${t.name}`)
+          } else {
+            dismissedExternal.set(t.path, disk)
+          }
+        }
+      } catch { /* 文件可能已被删除或无法读取，忽略 */ }
+    }
+  } finally {
+    checkingExternal = false
   }
 }
 
-// 当文件被保存时，从忽略集合中移除
+// 当文件被保存时，清除忽略状态（本地内容已成为磁盘最新内容）
 function onFileSaved(filePath: string) {
-  ignoredExternalChanges.delete(filePath)
+  dismissedExternal.delete(filePath)
 }
 
 // 当文件被重新打开时，清除忽略状态
 function onFileOpened(filePath: string) {
-  ignoredExternalChanges.delete(filePath)
+  dismissedExternal.delete(filePath)
 }
 
 function onWindowFocus() { checkExternalChanges() }
@@ -664,16 +755,22 @@ function cleanupOpenFileListener() {
 }
 
 // ---- Lifecycle ----
+// 具名函数：add/remove 必须传同一个引用，匿名箭头函数会导致监听器永远无法移除
+function onShowColumnEdit() { showColumnEdit.value = true }
+
 onMounted(() => {
   window.addEventListener('keydown', onKeyDown)
   document.addEventListener('ndd-key', onNddKey)
   document.addEventListener('drop', onDrop)
   document.addEventListener('dragover', onDrag)
   document.addEventListener('find-results-update', onFindResults)
-  document.addEventListener('show-column-edit', () => { showColumnEdit.value = true })
+  document.addEventListener('show-column-edit', onShowColumnEdit)
+  document.addEventListener('select-left-cmp-file', onSelectCmpLeft)
+  document.addEventListener('select-right-cmp-file', onSelectCmpRight)
   document.addEventListener('visibilitychange', onVisibilityChange)
   window.addEventListener('focus', onWindowFocus)
   setupOpenFileListener()
+  ed.loadMacros() // 恢复上次保存的宏（此前从未调用，宏重启后必然丢失）
   fileOps.restoreSession(); startAutoSave()
 })
 onUnmounted(() => {
@@ -682,7 +779,9 @@ onUnmounted(() => {
   document.removeEventListener('drop', onDrop)
   document.removeEventListener('dragover', onDrag)
   document.removeEventListener('find-results-update', onFindResults)
-  document.removeEventListener('show-column-edit', () => { showColumnEdit.value = true })
+  document.removeEventListener('show-column-edit', onShowColumnEdit)
+  document.removeEventListener('select-left-cmp-file', onSelectCmpLeft)
+  document.removeEventListener('select-right-cmp-file', onSelectCmpRight)
   document.removeEventListener('visibilitychange', onVisibilityChange)
   window.removeEventListener('focus', onWindowFocus)
   cleanupOpenFileListener()
@@ -691,13 +790,13 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="h-full flex flex-col bg-white dark:bg-[#1e1e1e]">
+  <div class="h-full flex flex-col bg-[var(--et-bg)]">
 
     <!-- 菜单栏 -->
     <NddMenuBar @cmd="onMenuCmd" />
 
     <!-- 工具栏 -->
-    <NddToolbar v-if="showToolbar" :icon-size="ss.config?.ui?.toolbarIconSize || 24" @toolbar-command="onMenuCmd" />
+    <NddToolbar v-if="showToolbar" :icon-size="ss.config?.ui?.toolbarIconSize || 18" @toolbar-command="onMenuCmd" />
 
     <!-- 主体：侧边栏 + 编辑区 -->
     <div class="flex-1 flex overflow-hidden min-h-0">
@@ -705,11 +804,11 @@ onUnmounted(() => {
       <!-- 侧边栏（Tab 切换：文件列表 / 目录树 / 代码片段 / 书签） -->
       <div
         v-if="showFileList || showFileTree || showSnippetPanel || showBookmarkPanel || showFunctionList || showFileMonitor"
-        class="flex flex-shrink-0 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-[#252526]"
+        class="sidebar-panel flex flex-shrink-0"
         :style="{ width: panelWidth + 'px' }"
       >
         <!-- 左侧垂直 Tab 图标栏 -->
-        <div class="sidebar-tab-bar flex-shrink-0 w-10 border-r border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#333] flex flex-col items-center py-2 gap-1">
+        <div class="sidebar-tab-bar">
           <button
             title="文件列表"
             class="sidebar-tab-btn"
@@ -774,7 +873,7 @@ onUnmounted(() => {
       </div>
 
       <!-- 拖拽分隔条 -->
-      <div v-if="showFileList || showFileTree || showSnippetPanel || showBookmarkPanel || showFunctionList || showFileMonitor" class="w-1 cursor-col-resize hover:bg-blue-500 flex-shrink-0" @mousedown="resizeStart" />
+      <div v-if="showFileList || showFileTree || showSnippetPanel || showBookmarkPanel || showFunctionList || showFileMonitor" class="panel-resizer" @mousedown="resizeStart" />
 
       <!-- 编辑区 -->
       <EditorArea class="flex-1 min-w-0" @open-diff="showDiff = true" />
@@ -821,12 +920,30 @@ onUnmounted(() => {
         :initial-tab="recentDialogTab"
         @close="showRecentDialog = false"
         @open-file="(path: string) => { showRecentDialog = false; fileOps.openFilePath(path) }"
+        @open-folder="openRecentFolder"
       />
     </ModalOverlay>
   </div>
 </template>
 
 <style scoped>
+.sidebar-panel {
+  border-right: 1px solid var(--et-border);
+  background: var(--et-bg);
+}
+
+.sidebar-tab-bar {
+  flex-shrink: 0;
+  width: 40px;
+  border-right: 1px solid var(--et-border);
+  background: var(--et-bg-sunken);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0;
+  gap: 4px;
+}
+
 /* 侧边栏 Tab 切换按钮 */
 .sidebar-tab-btn {
   width: 32px;
@@ -835,29 +952,29 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--et-radius);
   background: transparent;
-  color: #9ca3af;
+  color: var(--et-fg-subtle);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background .15s ease, color .15s ease;
 }
 .sidebar-tab-btn:hover {
-  background: #e5e7eb;
-  color: #374151;
+  background: var(--et-bg-hover);
+  color: var(--et-fg);
 }
 .sidebar-tab-btn.active {
-  background: #e5e7eb;
-  color: #1f2937;
+  background: var(--et-accent-soft);
+  color: var(--et-accent);
 }
-:global(html.dark) .sidebar-tab-btn {
-  color: #6b7280;
+
+.panel-resizer {
+  width: 3px;
+  cursor: col-resize;
+  background: transparent;
+  flex-shrink: 0;
+  transition: background .15s ease;
 }
-:global(html.dark) .sidebar-tab-btn:hover {
-  background: #374151;
-  color: #e5e7eb;
-}
-:global(html.dark) .sidebar-tab-btn.active {
-  background: #374151;
-  color: #ffffff;
+.panel-resizer:hover {
+  background: var(--et-accent);
 }
 </style>

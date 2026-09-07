@@ -62,6 +62,8 @@ export interface EditorConfig {
   lineNumbers: boolean
   autoSave: boolean
   autoSaveInterval: number
+  /** 自动保存触发方式：interval 定时 / blur 失焦 / both 两者 */
+  autoSaveMode?: 'interval' | 'blur' | 'both'
   highlightLine: boolean
   bracketPairColor: boolean
   minimap: boolean

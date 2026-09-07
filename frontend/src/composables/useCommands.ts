@@ -1,7 +1,19 @@
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { OpenFileDialog, SaveFileDialog, ReadFile, SaveFile, ReadFileBytes, ShowConfirmDialog, ConvertToUTF8, RenameFile } from '../../wailsjs/go/main/App'
+import { OpenFileDialog, SaveFileDialog, ReadFile, SaveFile, ReadFileBytes, ConvertToUTF8, RenameFile } from '../../wailsjs/go/main/App'
 import { getFileExtension } from '@/utils'
 import { useFormatConverterStore } from '@/stores'
+
+/**
+ * 尚未接线到真实实现的命令（菜单里存在入口，但功能为占位）。
+ * 命中时明确提示「暂未实现」，避免用户点击后毫无反应。
+ */
+const NOT_IMPLEMENTED = new Set([
+  'new-window',          // 在新窗口中打开（Wails v2 单主窗口模型不支持）
+  'import-plugin', 'import-shortcut', 'export-shortcut',
+  'recent-cmp',
+  'toggle-indent-guide', // 缩进参考线暂未实现
+  'pre-hex-page', 'next-hex-page', 'goto-hex-page', // 十六进制翻页未接线
+])
 
 /**
  * 命令分发 composable
@@ -117,7 +129,9 @@ export function useCommands(deps: {
       'find-prev': () => execEd('find-prev'),
       'find-dir': () => { deps.findMode.value = 'files'; deps.showFindWin.value = true },
       'replace': () => { deps.findMode.value = 'replace'; deps.showFindWin.value = true },
-      'goto-line': () => execEd('goto-line'),
+      // 必须派发 show-goto-line（弹出输入行号对话框），
+      // 而不是 goto-line（需要 args[0] 行号，不带参数时编辑器静默忽略）。
+      'goto-line': () => execEd('show-goto-line'),
       'toggle-bookmark': () => execEd('toggle-bookmark'),
       'next-bookmark': () => execEd('next-bookmark'),
       'prev-bookmark': () => execEd('prev-bookmark'),
@@ -239,9 +253,9 @@ export function useCommands(deps: {
       'zoom-reset': () => {
         if (ss.config) { ss.config.ui.zoomLevel = 100; ss.saveConfig() }
       },
+      'iconsize-16': () => { if (ss.config) { ss.config.ui.toolbarIconSize = 16; ss.saveConfig() } },
+      'iconsize-20': () => { if (ss.config) { ss.config.ui.toolbarIconSize = 20; ss.saveConfig() } },
       'iconsize-24': () => { if (ss.config) { ss.config.ui.toolbarIconSize = 24; ss.saveConfig() } },
-      'iconsize-36': () => { if (ss.config) { ss.config.ui.toolbarIconSize = 36; ss.saveConfig() } },
-      'iconsize-48': () => { if (ss.config) { ss.config.ui.toolbarIconSize = 48; ss.saveConfig() } },
       'encode-ANSI': () => deps.reopenWithEncoding('GBK'),
       'conv-ANSI': () => deps.convertTo('GBK'),
       'conv-UTF-8': () => deps.convertTo('UTF-8'),
@@ -328,8 +342,19 @@ export function useCommands(deps: {
 
     const fn = m[name]
     if (fn) {
-      if (fn.length >= 1 && args.length > 0) fn(...args)
-      else fn()
+      const r = (fn.length >= 1 && args.length > 0) ? fn(...args) : fn()
+      // async handler 的 rejection 不会被 try/catch 捕获，必须显式 catch，
+      // 否则失败时既无提示也无日志（WebView 中表现为"点了没反应"）。
+      if (r && typeof (r as Promise<void>).catch === 'function') {
+        (r as Promise<void>).catch((e: unknown) => {
+          ElMessage.error('操作失败：' + ((e as Error)?.message || String(e)))
+        })
+      }
+      return
+    }
+    // 已知尚未接线的功能：明确提示，而不是静默丢弃
+    if (NOT_IMPLEMENTED.has(name)) {
+      ElMessage.info('该功能暂未实现')
       return
     }
     // 委托给编辑器处理的命令 (case-*, trim-*, line-*, sort-*, tab2space, space2tab-*, mark-*, clear-mark, show-*, iconsize-*, conv-*, encode-*)

@@ -1,7 +1,8 @@
 <script lang="ts" setup>
 import { ref, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useEditorStore } from '@/stores'
-import { OpenDirectoryDialog, ReadFile, GetDirectoryTree, SearchInFiles, ReplaceInFiles } from '../../wailsjs/go/main/App'
+import { OpenDirectoryDialog, FindInDirectory, ReplaceInFiles, BatchReplace } from '../../wailsjs/go/main/App'
+import { confirmDialog } from '@/utils/confirm'
 import { ElMessage } from 'element-plus'
 
 const props = defineProps<{ visible: boolean; mode: 'find' | 'replace' | 'files' | 'global' | 'mark' }>()
@@ -41,18 +42,53 @@ const dWith = ref('')
 const dDir = ref('')
 const dFilter = ref(false)
 const dFilterVal = ref('')
-const dSkipDir = ref(false)
-const dSkipVal = ref('')
 const dWhole = ref(false)
 const dCase = ref(false)
 const dMode = ref<'normal' | 'extend' | 'regex'>('normal')
 const dSkipChild = ref(false)
-const dSkipHide = ref(true)
-const dSkipBin = ref(true)
-const dSkipBig = ref(true)
-const dMaxSize = ref(20)
 const dResults = ref<{ file: string; line: number; content: string }[]>([])
 const dLoading = ref(false)
+
+/**
+ * 目录/全局查找共用：把 UI 选项转换为后端 tools.FindOptions。
+ * 跳过隐藏目录、.git、node_modules 与二进制文件由后端 FindInDirectory 内置处理，
+ * 因此 UI 不再提供这些开关（原先是收集了参数却不参与过滤的假选项）。
+ * 「扩展」模式后端不支持，先在前端把 \n \t \x.. 转义成真实字符再按普通文本搜索。
+ */
+function buildBatchOptions(search: string, replace: string) {
+  let pattern = ''
+  if (dFilter.value && dFilterVal.value) {
+    pattern = dFilterVal.value
+      .split(/[:;,]/).map(s => s.trim()).filter(Boolean)
+      .map(s => s.startsWith('*') ? s : '*' + s)
+      .join(';')
+  }
+  return {
+    search: dMode.value === 'extend' ? processExtend(search) : search,
+    replace,
+    caseSensitive: dCase.value,
+    wholeWord: dWhole.value,
+    useRegex: dMode.value === 'regex',
+    includeSubdir: !dSkipChild.value,
+    filePattern: pattern,
+  }
+}
+
+/** 把后端 FindInFileResult[] 展平为结果列表 */
+function flattenResults(results: any[]) {
+  const flat: { file: string; line: number; content: string }[] = []
+  for (const r of results || []) {
+    for (const m of r.matches || []) {
+      flat.push({ file: r.file, line: m.line, content: (m.content || '').trim().substring(0, 200) })
+    }
+  }
+  return flat
+}
+
+/** 兼容绑定声明：多返回值运行时实际为 [count, files] 元组，旧声明为 number */
+function unwrapCount(res: unknown): number {
+  return Array.isArray(res) ? (res[0] ?? 0) : Number(res ?? 0)
+}
 
 // ==================== 标记 Tab ====================
 const mText = ref('')
@@ -205,62 +241,41 @@ async function dirFindAll() {
   if (!dText.value || !dDir.value) { fStatus.value = '请输入查找内容并选择目录'; return }
   dLoading.value = true; dResults.value = []; fStatus.value = '正在搜索...'
   try {
-    const tree = await GetDirectoryTree(dDir.value)
-    if (!tree?.root) { fStatus.value = '无法读取目录'; dLoading.value = false; return }
-    const textFiles: string[] = []
-    const textExts = new Set(['txt','md','json','js','ts','html','css','xml','yaml','yml','toml','ini','cfg','go','java','py','c','cpp','h','hpp','rs','sh','bat','sql','vue','svelte','php','rb','swift','kt','scala','lua','r','pl','pm','tex','log','csv','env','gitignore'])
-    function walk(n: any) {
-      if (!n) return
-      if (!n.isDir && n.path) {
-        const ext = (n.name || '').split('.').pop()?.toLowerCase() || ''
-        if (dFilter.value && dFilterVal.value) { const ae = dFilterVal.value.split(':').map(s => s.replace('*.','').toLowerCase()); if (!ae.includes(ext)) return }
-        if (textExts.has(ext) || ext === '') textFiles.push(n.path)
-      }
-      if (n.children && !dSkipChild.value) for (const c of n.children) walk(c)
-    }
-    walk(tree.root)
-    const regex = buildRegex(dText.value, dMode.value, dCase.value, dWhole.value)
-    let fc = 0
-    for (const fp of textFiles.slice(0, 200)) {
-      if (dResults.value.length >= 500) break
-      try {
-        const r = await ReadFile(fp)
-        if (!r?.content) continue
-        const lines = r.content.split('\n')
-        for (let i = 0; i < lines.length; i++) {
-          if (dResults.value.length >= 500) break
-          if (regex) { regex.lastIndex = 0; if (regex.test(lines[i])) dResults.value.push({ file: fp, line: i + 1, content: lines[i].trim().substring(0, 200) }) }
-          else { const l1 = dCase.value ? lines[i] : lines[i].toLowerCase(); const q1 = dCase.value ? dText.value : dText.value.toLowerCase(); if (l1.includes(q1)) dResults.value.push({ file: fp, line: i + 1, content: lines[i].trim().substring(0, 200) }) }
-        }
-        fc++
-      } catch (e) { console.warn(e) }
-    }
-    fStatus.value = `搜索完成：${fc} 文件，${dResults.value.length} 处匹配`
-    sendFindResults(`目录查找: "${dText.value}"`, [], undefined, dResults.value)
-  } catch (e) { fStatus.value = `搜索失败: ${e}` }
+    // 直接调用后端 FindInDirectory：16 并发，跳过隐藏/.git/node_modules/二进制文件。
+    // 原实现前端逐文件 ReadFile 串行搜索，200 个文件就会卡 UI 数秒。
+    const results = await FindInDirectory(dDir.value, dText.value, buildBatchOptions(dText.value, '') as any)
+    const flat = flattenResults(results as any[])
+    dResults.value = flat
+    fStatus.value = `搜索完成：${(results as any[]).length} 文件，${flat.length} 处匹配`
+    sendFindResults(`目录查找: "${dText.value}"`, [], undefined, flat)
+  } catch (e: any) { fStatus.value = `搜索失败: ${e?.message || ''}` }
   dLoading.value = false
 }
 
 async function dirReplace() {
-  if (!dDir.value) return
-  if (dResults.value.length === 0) { await dirFindAll() }
-  const fileSet = new Set(dResults.value.map(r => r.file))
-  let total = 0
-  for (const fp of fileSet) {
-    try {
-      const r = await ReadFile(fp)
-      if (!r?.content) continue
-      const regex = buildRegex(dText.value, dMode.value, dCase.value, dWhole.value)
-      if (!regex) continue
-      const nc = r.content.replace(regex, () => { total++; return dWith.value })
-      if (nc !== r.content) {
-        const { SaveFile } = await import('../../wailsjs/go/main/App')
-        await SaveFile(fp, nc, r.info.encoding)
-      }
-    } catch (e) { console.warn(e) }
-  }
-  fStatus.value = `${fileSet.size} 文件，${total} 处替换`
-  dResults.value = []
+  if (!dText.value || !dDir.value) { fStatus.value = '请输入查找内容并选择目录'; return }
+  const ok = await confirmDialog({
+    title: '批量替换',
+    message: `将在 "${dDir.value}" 中把所有匹配内容替换为 "${dWith.value}"。\n此操作直接写入磁盘、不可撤销，是否继续？`,
+    confirmText: '开始替换',
+    danger: true,
+  })
+  if (!ok) return
+  dLoading.value = true
+  try {
+    const opts = buildBatchOptions(dText.value, dWith.value) as any
+    let total: number
+    if (dResults.value.length > 0) {
+      // 只替换当前结果涉及的文件集
+      const files = [...new Set(dResults.value.map(r => r.file))]
+      total = unwrapCount(await ReplaceInFiles(files, opts.search, dWith.value, opts))
+    } else {
+      total = unwrapCount(await BatchReplace(dDir.value, opts))
+    }
+    fStatus.value = `替换完成：${total} 处`
+    dResults.value = []
+  } catch (e: any) { fStatus.value = `替换失败: ${e?.message || ''}` }
+  dLoading.value = false
 }
 
 // ==================== 🆕 V2.0.0 全局搜索 ====================
@@ -281,25 +296,9 @@ async function globalSearch() {
   if (!gText.value || !gDir.value) { fStatus.value = '请输入查找内容并选择目录'; return }
   gLoading.value = true; gResults.value = []; fStatus.value = '正在搜索...'
   try {
-    const tree = await GetDirectoryTree(gDir.value)
-    if (!tree?.root) { fStatus.value = '无法读取目录'; gLoading.value = false; return }
-    const textFiles: string[] = []
-    const textExts = new Set(['txt','md','json','js','ts','html','css','xml','yaml','yml','toml','ini','cfg','go','java','py','c','cpp','h','hpp','rs','sh','bat','sql','vue','svelte','php','rb','swift','kt','scala','lua','r','pl','pm','tex','log','csv','env','gitignore','svg','Makefile','Dockerfile'])
-    function walk(n: any) {
-      if (!n) return
-      if (!n.isDir && n.path) {
-        const ext = (n.name || '').split('.').pop()?.toLowerCase() || ''
-        if (gPattern.value) {
-          const patterns = gPattern.value.split(',').map(s => s.trim().replace('*.',''))
-          if (!patterns.some(p => (n.name || '').includes(p))) return
-        }
-        if (textExts.has(ext) || ext === '' || n.name === 'Makefile' || n.name === 'Dockerfile') textFiles.push(n.path)
-      }
-      if (n.children && gSubdir.value) for (const c of n.children) walk(c)
-    }
-    walk(tree.root)
-    // 使用 SearchInFiles API
-    const searchOpts = {
+    // 与目录查找一样直接走后端 FindInDirectory（并发 + 内置过滤），
+    // 替代原实现的前端 walk 收集文件 + SearchInFiles 两步。
+    const opts = {
       search: gText.value,
       replace: gReplace.value,
       caseSensitive: gCase.value,
@@ -308,16 +307,8 @@ async function globalSearch() {
       includeSubdir: gSubdir.value,
       filePattern: gPattern.value,
     }
-    const results = await SearchInFiles(textFiles.slice(0, 500), gText.value, searchOpts as any)
-    if (results) {
-      for (const r of results as any[]) {
-        if (r.matches) {
-          for (const m of r.matches) {
-            gResults.value.push({ file: r.file, line: m.line, content: m.content?.substring(0, 200) || '' })
-          }
-        }
-      }
-    }
+    const results = await FindInDirectory(gDir.value, gText.value, opts as any)
+    gResults.value = flattenResults(results as any[])
     fStatus.value = `搜索完成：${gResults.value.length} 处匹配`
     sendFindResults(`全局搜索: "${gText.value}"`, [], undefined, gResults.value)
   } catch (e: any) {
@@ -328,26 +319,36 @@ async function globalSearch() {
 
 async function globalReplace() {
   if (!gDir.value || !gText.value) return
-  if (gResults.value.length === 0) { await globalSearch() }
-  const fileSet = new Set(gResults.value.map(r => r.file))
-  let total = 0
-  const failed: string[] = []
-  for (const fp of fileSet) {
-    try {
-      const r = await ReadFile(fp)
-      if (!r?.content) continue
-      const regex = buildRegex(gText.value, gRegex.value ? 'regex' : 'normal', gCase.value, gWhole.value)
-      if (!regex) continue
-      const nc = r.content.replace(regex, () => { total++; return gReplace.value })
-      if (nc !== r.content) {
-        const { SaveFile } = await import('../../wailsjs/go/main/App')
-        await SaveFile(fp, nc, r.info.encoding)
-      }
-    } catch { failed.push(fp) }
+  const ok = await confirmDialog({
+    title: '全局替换',
+    message: `将在 "${gDir.value}" 中把 "${gText.value}" 全部替换为 "${gReplace.value}"。\n此操作直接写入磁盘、不可撤销，是否继续？`,
+    confirmText: '开始替换',
+    danger: true,
+  })
+  if (!ok) return
+  gLoading.value = true
+  try {
+    let total: number
+    if (gResults.value.length > 0) {
+      const files = [...new Set(gResults.value.map(r => r.file))]
+      total = unwrapCount(await ReplaceInFiles(files, gText.value, gReplace.value, {
+        search: gText.value, replace: gReplace.value,
+        caseSensitive: gCase.value, wholeWord: gWhole.value, useRegex: gRegex.value,
+        includeSubdir: gSubdir.value, filePattern: gPattern.value,
+      } as any))
+    } else {
+      total = unwrapCount(await BatchReplace(gDir.value, {
+        search: gText.value, replace: gReplace.value,
+        caseSensitive: gCase.value, wholeWord: gWhole.value, useRegex: gRegex.value,
+        includeSubdir: gSubdir.value, filePattern: gPattern.value,
+      } as any))
+    }
+    fStatus.value = `替换完成：${total} 处`
+    gResults.value = []
+  } catch (e: any) {
+    fStatus.value = `替换失败: ${e?.message || ''}`
   }
-  fStatus.value = `${fileSet.size} 文件，${total} 处替换`
-  if (failed.length > 0) fStatus.value += `，${failed.length} 个文件失败`
-  gResults.value = []
+  gLoading.value = false
 }
 
 // ==================== 标记操作 ====================
@@ -532,13 +533,10 @@ watch(() => props.visible, async (v) => {
                 <label class="check w-20 text-right"><input type="checkbox" v-model="dFilter" /> 文件类型:</label>
                 <input v-model="dFilterVal" :disabled="!dFilter" placeholder="*.c:*.cpp:*.h" class="find-input flex-1" />
               </div>
-              <div class="find-row">
-                <label class="check w-20 text-right"><input type="checkbox" v-model="dSkipDir" /> 跳过目录:</label>
-                <input v-model="dSkipVal" :disabled="!dSkipDir" placeholder="debug:.git" class="find-input flex-1" />
-              </div>
               <div class="find-checks ml-20">
                 <label class="check"><input type="checkbox" v-model="dWhole" /> 全词匹配</label>
                 <label class="check"><input type="checkbox" v-model="dCase" /> 区分大小写</label>
+                <label class="check"><input type="checkbox" v-model="dSkipChild" /> 跳过子目录</label>
               </div>
               <div class="flex gap-2 ml-20 mt-1">
                 <fieldset class="find-mode flex-1">
@@ -548,10 +546,8 @@ watch(() => props.visible, async (v) => {
                   <label class="check"><input type="radio" v-model="dMode" value="regex" /> 正则</label>
                 </fieldset>
                 <fieldset class="find-mode flex-1">
-                  <legend>选项</legend>
-                  <label class="check"><input type="checkbox" v-model="dSkipChild" /> 跳过子目录</label>
-                  <label class="check"><input type="checkbox" v-model="dSkipHide" /> 跳过隐藏文件</label>
-                  <label class="check"><input type="checkbox" v-model="dSkipBin" /> 跳过二进制</label>
+                  <legend>自动过滤</legend>
+                  <span class="text-[11px] text-gray-400 leading-5">隐藏目录、.git、node_modules、二进制文件已自动跳过</span>
                 </fieldset>
               </div>
             </div>
