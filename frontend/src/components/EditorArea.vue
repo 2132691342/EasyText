@@ -10,7 +10,7 @@ import HexViewer from './viewer/HexViewer.vue'
 import LogViewer from './viewer/LogViewer.vue'
 
 const editorStore = useEditorStore()
-const emit = defineEmits(['open-diff'])
+const emit = defineEmits(['open-diff', 'open-converter'])
 
 const hasTabs = computed(() => editorStore.tabs.length > 0)
 const activeTab = computed(() => editorStore.activeTab)
@@ -18,7 +18,7 @@ const viewType = computed(() => activeTab.value?.viewType || 'code')
 </script>
 
 <template>
-  <div class="h-full flex flex-col bg-white dark:bg-[#1e1e1e]">
+  <div class="h-full flex flex-col bg-[var(--et-bg)]">
     <!-- Tab bar -->
     <TabBar v-if="hasTabs" />
 
@@ -55,7 +55,7 @@ const viewType = computed(() => activeTab.value?.viewType || 'code')
       />
 
       <!-- Welcome screen (no tabs) -->
-      <WelcomeScreen v-else @open-diff="emit('open-diff')" />
+      <WelcomeScreen v-else @open-diff="emit('open-diff')" @open-converter="emit('open-converter')" />
     </div>
   </div>
 </template>

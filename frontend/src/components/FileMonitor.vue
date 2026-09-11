@@ -16,8 +16,13 @@ let eventsOff: (() => void) | null = null
 async function toggleMonitor(path: string) {
   if (!path) return
   if (monitored.value.has(path)) {
-    try { await StopFileWatch(path) } catch { /* ignore */ }
-    monitored.value = new Set([...monitored.value].filter(p => p !== path))
+    // 只有后端确实停止后才更新 UI，否则会出现「界面未监控、后端仍在监控」的不一致
+    try {
+      await StopFileWatch(path)
+      monitored.value = new Set([...monitored.value].filter(p => p !== path))
+    } catch (e: any) {
+      ElMessage.error('停止监控失败：' + (e?.message || ''))
+    }
   } else {
     try {
       await StartFileWatch(path)

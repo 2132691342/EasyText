@@ -71,10 +71,10 @@ interface MatchResult {
 
 const matches = computed<MatchResult[]>(() => {
   if (!regex.value || !testText.value) return []
-  const r = regex.value
+  // 每次都用新实例：与 highlightText 共用同一个带 g 标志的 RegExp 会互相改写
+  // lastIndex，导致匹配数超过安全上限 break 后下一次统计/高亮错位。
+  const r = new RegExp(regex.value.source, regex.value.flags)
   const results: MatchResult[] = []
-  // 使用非 global 正则获取捕获组
-  const nonGlobal = new RegExp(r.source, buildFlags.value.replace('g', ''))
   let match: RegExpExecArray | null
   let idx = 0
   while ((match = r.exec(testText.value)) !== null) {
@@ -106,7 +106,7 @@ const replacedText = computed(() => {
 // ============ 高亮文本 ============
 function highlightText(text: string): string {
   if (!regex.value || !text) return escapeHtml(text)
-  const r = regex.value
+  const r = new RegExp(regex.value.source, regex.value.flags)
   let result = ''
   let lastIdx = 0
   let match: RegExpExecArray | null
@@ -142,7 +142,9 @@ function selectTemplate(t: { name: string; pattern: string }) {
 }
 
 function copyToClipboard(text: string) {
-  navigator.clipboard.writeText(text).then(() => ElMessage.success('已复制'))
+  navigator.clipboard.writeText(text)
+    .then(() => ElMessage.success('已复制'))
+    .catch(() => ElMessage.error('复制失败'))
 }
 
 function clearAll() {

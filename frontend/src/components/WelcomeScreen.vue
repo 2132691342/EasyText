@@ -9,7 +9,7 @@ import type { RecentEntry } from '@/types'
 const editorStore = useEditorStore()
 const fileStore = useFileStore()
 
-const emit = defineEmits(['open-diff'])
+const emit = defineEmits(['open-diff', 'open-converter'])
 
 // 🆕 V2.0.0 最近访问
 const recentFiles = ref<RecentEntry[]>([])
@@ -95,113 +95,176 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="h-full flex flex-col items-center justify-center bg-white dark:bg-[#1e1e1e]">
+  <div class="welcome">
     <!-- Logo -->
-    <div class="mb-8">
-      <FileText class="w-16 h-16 text-gray-400 dark:text-gray-500" />
+    <div class="welcome-logo">
+      <FileText :size="56" :stroke-width="1.2" />
     </div>
 
     <!-- Title -->
-    <h1 class="text-2xl font-bold text-gray-700 dark:text-gray-200 mb-2">EasyText</h1>
-    <p class="text-sm text-gray-500 dark:text-gray-400 mb-8">轻量级桌面文档编辑工具</p>
+    <h1 class="welcome-title">EasyText</h1>
+    <p class="welcome-sub">轻量级桌面文档编辑工具</p>
 
     <!-- Quick actions -->
-    <div class="grid grid-cols-2 gap-4 max-w-md">
-      <button
-        class="quick-action flex flex-col items-center p-4 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
-        @click="openFile"
-      >
-        <FileText class="w-8 h-8 text-blue-500 mb-2" />
-        <span class="text-sm text-gray-700 dark:text-gray-200">打开文件</span>
-        <span class="text-xs text-gray-400">Ctrl+O</span>
+    <div class="welcome-actions">
+      <button class="qa" @click="openFile">
+        <FileText :size="26" :stroke-width="1.5" />
+        <span class="qa-label">打开文件</span>
+        <span class="qa-key">Ctrl+O</span>
       </button>
 
-      <button
-        class="quick-action flex flex-col items-center p-4 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
-        @click="openFolder"
-      >
-        <FolderOpen class="w-8 h-8 text-blue-500 mb-2" />
-        <span class="text-sm text-gray-700 dark:text-gray-200">打开文件夹</span>
-        <span class="text-xs text-gray-400">Ctrl+Shift+O</span>
+      <button class="qa" @click="openFolder">
+        <FolderOpen :size="26" :stroke-width="1.5" />
+        <span class="qa-label">打开文件夹</span>
+        <span class="qa-key">Ctrl+Shift+O</span>
       </button>
 
-      <button
-        class="quick-action flex flex-col items-center p-4 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors opacity-60"
-      >
-        <FileJson class="w-8 h-8 text-blue-500 mb-2" />
-        <span class="text-sm text-gray-700 dark:text-gray-200">JSON 工具</span>
-        <span class="text-xs text-gray-400">Ctrl+Shift+F</span>
+      <button class="qa" @click="emit('open-converter')">
+        <FileJson :size="26" :stroke-width="1.5" />
+        <span class="qa-label">格式转换</span>
+        <span class="qa-key">工具 → 格式转换</span>
       </button>
 
-      <button
-        class="quick-action flex flex-col items-center p-4 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
-        @click="emit('open-diff')"
-      >
-        <Diff class="w-8 h-8 text-blue-500 mb-2" />
-        <span class="text-sm text-gray-700 dark:text-gray-200">文档对比</span>
+      <button class="qa" @click="emit('open-diff')">
+        <Diff :size="26" :stroke-width="1.5" />
+        <span class="qa-label">文档对比</span>
+        <span class="qa-key">工具 → 文档对比</span>
       </button>
     </div>
 
-    <!-- 🆕 V2.0.0 最近访问 -->
-    <div v-if="recentFiles.length > 0 || recentFolders.length > 0" class="mt-6 max-w-md w-full px-4">
+    <!-- 最近访问 -->
+    <div v-if="recentFiles.length > 0 || recentFolders.length > 0" class="welcome-recent">
       <!-- 最近文件 -->
-      <div v-if="recentFiles.length > 0" class="mb-4">
-        <div class="flex items-center justify-between mb-2">
-          <div class="flex items-center gap-1.5 text-xs text-gray-400">
-            <Clock class="w-3.5 h-3.5" />
+      <div v-if="recentFiles.length > 0" class="recent-block">
+        <div class="recent-head">
+          <div class="recent-title">
+            <Clock :size="14" />
             <span>最近打开的文件</span>
           </div>
-          <button class="text-[10px] text-gray-400 hover:text-red-400" @click="clearRecentFiles" title="清除">
-            <X class="w-3 h-3" />
+          <button class="recent-clear" title="清除" @click="clearRecentFiles">
+            <X :size="12" />
           </button>
         </div>
-        <div class="space-y-0.5">
+        <div class="recent-list">
           <div
             v-for="entry in recentFiles.slice(0, 10)" :key="entry.path"
-            class="flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-50 dark:hover:bg-[#2a2a2a] cursor-pointer group"
+            class="recent-item"
+            :title="entry.path"
             @click="openRecentFile(entry)"
           >
-            <FileText class="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-            <span class="text-xs text-gray-600 dark:text-gray-300 truncate flex-1">{{ entry.name }}</span>
-            <span class="text-[10px] text-gray-400 truncate max-w-[200px] hidden group-hover:inline">{{ entry.path }}</span>
+            <FileText :size="14" class="recent-icon" />
+            <span class="recent-name">{{ entry.name }}</span>
+            <span class="recent-path">{{ entry.path }}</span>
           </div>
         </div>
       </div>
 
       <!-- 最近文件夹 -->
-      <div v-if="recentFolders.length > 0">
-        <div class="flex items-center justify-between mb-2">
-          <div class="flex items-center gap-1.5 text-xs text-gray-400">
-            <FolderOpen class="w-3.5 h-3.5" />
+      <div v-if="recentFolders.length > 0" class="recent-block">
+        <div class="recent-head">
+          <div class="recent-title">
+            <FolderOpen :size="14" />
             <span>最近打开的文件夹</span>
           </div>
-          <button class="text-[10px] text-gray-400 hover:text-red-400" @click="clearRecentFolders" title="清除">
-            <X class="w-3 h-3" />
+          <button class="recent-clear" title="清除" @click="clearRecentFolders">
+            <X :size="12" />
           </button>
         </div>
-        <div class="space-y-0.5">
+        <div class="recent-list">
           <div
             v-for="entry in recentFolders.slice(0, 10)" :key="entry.path"
-            class="flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-50 dark:hover:bg-[#2a2a2a] cursor-pointer group"
+            class="recent-item"
+            :title="entry.path"
             @click="openRecentFolder(entry)"
           >
-            <FolderOpen class="w-3.5 h-3.5 text-yellow-500 flex-shrink-0" />
-            <span class="text-xs text-gray-600 dark:text-gray-300 truncate flex-1">{{ entry.name }}</span>
-            <span class="text-[10px] text-gray-400 truncate max-w-[200px] hidden group-hover:inline">{{ entry.path }}</span>
+            <FolderOpen :size="14" class="recent-icon recent-icon--folder" />
+            <span class="recent-name">{{ entry.name }}</span>
+            <span class="recent-path">{{ entry.path }}</span>
           </div>
         </div>
       </div>
     </div>
 
     <!-- Footer -->
-    <div class="mt-8 text-xs text-gray-400">
-      <p>版本 2.0.0 | MIT License</p>
-    </div>
+    <div class="welcome-footer">版本 2.0.0 | MIT License</div>
   </div>
 </template>
 
 <style scoped>
-.quick-action {
-  min-width: 140px;
+/* 首屏此前整块使用 Tailwind 的 gray-* / blue-* 与 dark: 变体，
+   与其余界面的语义令牌不同源，切换主题时观感割裂；这里统一到 --et-*。 */
+.welcome {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--et-bg);
+  color: var(--et-fg);
+  padding: 24px;
+  overflow-y: auto;
 }
+
+.welcome-logo { margin-bottom: 20px; color: var(--et-fg-subtle); }
+.welcome-title { margin: 0 0 4px; font-size: 24px; font-weight: 600; letter-spacing: .5px; }
+.welcome-sub { margin: 0 0 28px; font-size: 13px; color: var(--et-fg-muted); }
+
+.welcome-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  width: 100%;
+  max-width: 380px;
+}
+.qa {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 16px 12px;
+  border: 1px solid var(--et-border);
+  border-radius: var(--et-radius);
+  background: var(--et-bg-elevated);
+  color: var(--et-fg-muted);
+  cursor: pointer;
+  transition: background .14s ease, border-color .14s ease, color .14s ease;
+}
+.qa:hover {
+  border-color: var(--et-accent);
+  background: var(--et-accent-soft);
+  color: var(--et-accent);
+}
+.qa-label { font-size: 13px; color: var(--et-fg); }
+.qa-key { font-size: 11px; color: var(--et-fg-subtle); }
+
+.welcome-recent { margin-top: 28px; width: 100%; max-width: 520px; }
+.recent-block { margin-bottom: 14px; }
+.recent-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.recent-title { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--et-fg-subtle); }
+.recent-clear {
+  display: inline-flex; padding: 2px; border: none; border-radius: var(--et-radius-sm);
+  background: transparent; color: var(--et-fg-subtle); cursor: pointer;
+}
+.recent-clear:hover { background: var(--et-bg-hover); color: #ef4444; }
+
+.recent-list { display: flex; flex-direction: column; }
+.recent-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 8px; border-radius: var(--et-radius-sm);
+  cursor: pointer; min-width: 0;
+}
+.recent-item:hover { background: var(--et-bg-hover); }
+.recent-icon { flex-shrink: 0; color: var(--et-fg-subtle); }
+.recent-icon--folder { color: #eab308; }
+.recent-name {
+  font-size: 12px; color: var(--et-fg);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0;
+  max-width: 45%;
+}
+.recent-path {
+  font-size: 11px; color: var(--et-fg-subtle);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;
+}
+
+.welcome-footer { margin-top: 28px; font-size: 11px; color: var(--et-fg-subtle); }
 </style>

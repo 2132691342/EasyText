@@ -29,20 +29,17 @@ const form = reactive({
   showIndentGuide: config.value.editor.showIndentGuide,
   showWhitespace: config.value.editor.showWhitespace,
   showEol: config.value.editor.showEol,
-  bigTextSizeLimit: 100,
   currentTheme: config.value.theme.currentTheme,
   defaultEncoding: config.value.file.defaultEncoding,
   autoDetectEncoding: config.value.file.autoDetectEncoding,
   defaultLineEnding: config.value.file.defaultLineEnding,
-  restoreFilesOnClose: true,
-  clearOpenFileRecord: false,
+  restoreFilesOnClose: config.value.ui.restoreSession ?? true,
   language: config.value.ui.language,
   showFileTree: config.value.ui.showFileTree,
   showStatusBar: config.value.ui.showStatusBar,
   showToolBar: config.value.ui.showToolBar,
   showFileListView: config.value.ui.showFileListView,
   zoomLevel: config.value.ui.zoomLevel,
-  autoIndent: false,
   // 🆕 V2.0.0
   autoTheme: config.value.theme.autoTheme ?? false,
   autoSaveMode: settingStore.autoSaveMode || 'interval',
@@ -186,6 +183,8 @@ async function saveSettings() {
       tabSize: form.tabSize, insertSpaces: form.insertSpaces,
       wordWrap: form.wordWrap, lineNumbers: form.lineNumbers,
       autoSave: form.autoSave, autoSaveInterval: form.autoSaveInterval,
+      // 曾遗漏 autoSaveMode：保存后只写内存，重启回落 interval，blur/both 形同未生效
+      autoSaveMode: form.autoSaveMode,
       highlightLine: form.highlightLine, bracketPairColor: form.bracketPairColor,
       minimap: config.value.editor.minimap,
       showIndentGuide: form.showIndentGuide, showWhitespace: form.showWhitespace,
@@ -215,7 +214,10 @@ async function saveSettings() {
       recentFilesLimit: form.recentFilesLimit, // 🆕 用户可调，默认 10
       lastFolder: config.value.ui.lastFolder || '', // 🆕 V2.0.0
       closeToTray: form.closeToTray, // 🆕 关闭时最小化到托盘
+      restoreSession: form.restoreFilesOnClose, // 关闭/启动时是否恢复上次的文件
     },
+    // 必须带上用户自定义快捷键：否则这里构造的 newConfig 会把已保存的键位覆盖成空
+    shortcuts: config.value.shortcuts,
   }
   try {
     await UpdateConfig(newConfig as unknown as import('../../wailsjs/go/models').config.AppConfig)
@@ -223,6 +225,8 @@ async function saveSettings() {
     settingStore.applyTheme()
     // 🆕 V2.0.0 保存自动保存模式
     settingStore.setAutoSaveMode(form.autoSaveMode as 'interval' | 'blur' | 'both')
+    // 自动跟随系统主题此前只写配置、没启停监听器，本次会话内切换系统主题无效
+    settingStore.setAutoTheme(form.autoTheme)
     ElMessage.success('设置已保存')
     emit('close')
   } catch (error) {

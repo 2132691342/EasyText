@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import { useFileStore, useEditorStore } from '@/stores'
 import {
   ReadFile, DeleteFile, DeleteDirectory, RenameFile, CopyFile, CreateDirectory,
@@ -79,8 +79,9 @@ async function handleClick() {
         if (result) {
           editorStore.createTab(props.node.path, result.content, result.info.encoding, result.info.lineEnding)
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('Failed to open file:', error)
+        ElMessage.error('打开文件失败: ' + (error?.message || ''))
       }
     }
   }
@@ -116,8 +117,9 @@ async function refreshTree() {
   try {
     const tree = await GetDirectoryTree(rootPath)
     fileStore.setFileTree(tree?.root || null)
-  } catch (error) {
+  } catch (error: any) {
     console.error('Failed to refresh tree:', error)
+    ElMessage.error('刷新目录失败: ' + (error?.message || ''))
   }
 }
 
@@ -407,8 +409,9 @@ async function openInEditor() {
       if (result) {
         editorStore.createTab(props.node.path, result.content, result.info.encoding, result.info.lineEnding)
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to open file:', error)
+      ElMessage.error('打开文件失败: ' + (error?.message || ''))
     }
   }
 }
@@ -465,9 +468,16 @@ function handleClickOutside() {
   }
 }
 
-onMounted(() => {
-  document.addEventListener('click', handleClickOutside)
-})
+// 全局 click 监听只在右键菜单打开期间挂载。
+// 原实现让每个树节点实例在 onMounted 都注册一个 document 监听，
+// 展开的节点越多，每次点击要跑的回调就越多（N 个节点 = N 个监听）。
+watch(
+  () => contextMenu.value.visible,
+  (v) => {
+    if (v) document.addEventListener('click', handleClickOutside)
+    else document.removeEventListener('click', handleClickOutside)
+  },
+)
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)

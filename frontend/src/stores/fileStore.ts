@@ -18,11 +18,32 @@ export const useFileStore = defineStore('file', () => {
     currentDirectory.value = path
   }
 
+  /** 收集树中所有节点路径（用于裁剪失效的展开/选中状态） */
+  function collectPaths(node: TreeNode | null, out: Set<string>) {
+    if (!node) return
+    out.add(node.path)
+    for (const c of node.children || []) collectPaths(c, out)
+  }
+
   function setFileTree(tree: TreeNode | null) {
     fileTree.value = tree
-    if (tree) {
-      // Auto-expand root
-      expandedPaths.value.add(tree.path)
+    if (!tree) {
+      expandedPaths.value = new Set()
+      selectedPath.value = null
+      return
+    }
+    // 刷新/删除/重命名后，旧路径会残留在 expandedPaths 里，
+    // 造成「展开了不存在的目录」「选中项无高亮」等不一致，这里按新树裁剪。
+    const valid = new Set<string>()
+    collectPaths(tree, valid)
+    const next = new Set<string>()
+    for (const p of expandedPaths.value) {
+      if (valid.has(p)) next.add(p)
+    }
+    next.add(tree.path) // 根节点默认展开
+    expandedPaths.value = next
+    if (selectedPath.value && !valid.has(selectedPath.value)) {
+      selectedPath.value = null
     }
   }
 

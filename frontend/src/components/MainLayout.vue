@@ -326,20 +326,32 @@ function onNddKey(e: Event) {
 }
 function onKeyDown(e: KeyboardEvent) {
   const c = e.ctrlKey || e.metaKey
+  // 全局快捷键改为读取「设置 → 快捷键管理」里的键位表（ss.matchShortcut），
+  // 默认值与原先的硬编码完全一致，因此行为不变；用户在设置里改键后即时生效。
+  const hit = (id: string) => ss.matchShortcut(e, id)
+
   // 文件操作
-  if (c && !e.shiftKey && e.key === 'o') { e.preventDefault(); fileOps.openFile() }
-  else if (c && !e.shiftKey && e.key === 'n') { e.preventDefault(); fileOps.newFile() }
-  else if (c && !e.shiftKey && e.key === 't') { e.preventDefault(); fileOps.newFile() }
-  else if (c && !e.shiftKey && e.key === 's') { e.preventDefault(); fileOps.saveFile() }
-  else if (c && e.shiftKey && e.key === 'S') { e.preventDefault(); fileOps.saveFileAs() }
-  else if (c && !e.shiftKey && e.key === 'w') { e.preventDefault(); ed.activeTab && closeTab(ed.activeTab.id) }
-  else if (c && e.shiftKey && e.key === 'W') { e.preventDefault(); closeAll() }
+  if (hit('open-file')) { e.preventDefault(); fileOps.openFile() }
+  else if (hit('save-as')) { e.preventDefault(); fileOps.saveFileAs() }
+  else if (hit('save-all')) { e.preventDefault(); fileOps.saveAll() }
+  else if (hit('save')) { e.preventDefault(); fileOps.saveFile() }
+  else if (hit('new-file')) { e.preventDefault(); fileOps.newFile() }
+  else if (hit('close-tab')) { e.preventDefault(); if (ed.activeTab) closeTab(ed.activeTab.id) }
+  else if (hit('close-all')) { e.preventDefault(); closeAll() }
+  else if (hit('exit')) { e.preventDefault(); onMenuCmd('exit') }
+  else if (hit('print')) { e.preventDefault(); onMenuCmd('print') }
   // 查找 / 替换 / 跳转全局快捷键（LogViewer/HexViewer 等不挂在 CodeMirror keymap，必须在这里兜底）
-  else if (c && !e.shiftKey && (e.key === 'f' || e.key === 'F')) { e.preventDefault(); onMenuCmd('find') }
-  else if (c && !e.shiftKey && (e.key === 'h' || e.key === 'H')) { e.preventDefault(); onMenuCmd('replace') }
-  else if (c && !e.shiftKey && (e.key === 'g' || e.key === 'G')) { e.preventDefault(); onMenuCmd('goto-line') }
-  else if (c && e.shiftKey && (e.key === 'f' || e.key === 'F')) { e.preventDefault(); onMenuCmd('search-files') }
-  else if (c && e.shiftKey && (e.key === 'd' || e.key === 'D')) { e.preventDefault(); onMenuCmd('find-dir') }
+  // 注：键位表中 find-in-dir 的默认键是 Ctrl+Shift+F，沿用原来的「全局搜索」行为
+  else if (hit('find-in-dir')) { e.preventDefault(); onMenuCmd('search-files') }
+  else if (hit('replace')) { e.preventDefault(); onMenuCmd('replace') }
+  else if (hit('find')) { e.preventDefault(); onMenuCmd('find') }
+  else if (hit('find-next')) { e.preventDefault(); onMenuCmd('find-next') }
+  else if (hit('find-prev')) { e.preventDefault(); onMenuCmd('find-prev') }
+  else if (hit('goto-line')) { e.preventDefault(); onMenuCmd('goto-line') }
+  // —— 以下组合尚未进入键位表，保留硬编码兜底 ——
+  else if (c && e.shiftKey && (e.key === 'O' || e.key === 'o')) { e.preventDefault(); fileOps.openDir() }
+  else if (c && e.shiftKey && (e.key === 'D' || e.key === 'd')) { e.preventDefault(); onMenuCmd('find-dir') }
+  else if (c && !e.shiftKey && (e.key === 't' || e.key === 'T')) { e.preventDefault(); fileOps.newFile() }
   // Tab 切换
   else if (c && e.key === 'Tab') { e.preventDefault(); const tabs = ed.tabs; if (!tabs.length) return; let i = ed.activeTabIndex + (e.shiftKey ? -1 : 1); if (i < 0) i = tabs.length - 1; else if (i >= tabs.length) i = 0; ed.activateTab(tabs[i].id) }
   else if (e.key === 'Escape') { if (showFindWin.value) showFindWin.value = false }
@@ -526,6 +538,11 @@ function onTabCompareFile(side: 'left' | 'right') {
 }
 const onSelectCmpLeft = onTabCompareFile('left')
 const onSelectCmpRight = onTabCompareFile('right')
+
+/** 对比规则已应用：通知 DiffView 用新规则重新对比 */
+function onCmpRulesApplied() {
+  document.dispatchEvent(new CustomEvent('cmp-rules-updated'))
+}
 async function binaryCompare() {
   try {
     const left = await OpenFileDialog(); if (!left) return
@@ -754,6 +771,50 @@ function cleanupOpenFileListener() {
   }
 }
 
+// ---- 关闭窗口拦截：后端关闭前询问前端，避免未保存内容被静默丢弃 ----
+let cancelBeforeClose: (() => void) | null = null
+
+async function setupBeforeCloseListener() {
+  const { EventsOn, EventsEmit } = await import('../../wailsjs/runtime/runtime')
+  cancelBeforeClose = EventsOn('app:before-close', async () => {
+    // 无未保存内容 → 直接放行退出
+    if (ed.dirtyTabs.length === 0) {
+      EventsEmit('app:quit-force')
+      return
+    }
+    try {
+      await ElMessageBox.confirm(
+        `有 ${ed.dirtyTabs.length} 个文件存在未保存的修改。\n` +
+        `点击「保存并退出」会先保存全部更改再关闭；点击「取消」返回继续编辑。`,
+        '退出确认',
+        { confirmButtonText: '保存并退出', cancelButtonText: '取消', type: 'warning' },
+      )
+    } catch {
+      return // 用户取消：窗口保持打开
+    }
+    await fileOps.saveAll()
+    // 新建文档还没有路径，saveAll 会跳过；逐个弹出另存为，保证不丢内容
+    for (const t of [...ed.dirtyTabs]) {
+      if (!t.path) {
+        ed.activateTab(t.id)
+        await fileOps.saveFileAs()
+      }
+    }
+    if (ed.dirtyTabs.length > 0) {
+      ElMessage.warning('仍有文档未保存，已取消退出')
+      return
+    }
+    EventsEmit('app:quit-force')
+  })
+}
+
+function cleanupBeforeCloseListener() {
+  if (cancelBeforeClose) {
+    cancelBeforeClose()
+    cancelBeforeClose = null
+  }
+}
+
 // ---- Lifecycle ----
 // 具名函数：add/remove 必须传同一个引用，匿名箭头函数会导致监听器永远无法移除
 function onShowColumnEdit() { showColumnEdit.value = true }
@@ -770,8 +831,11 @@ onMounted(() => {
   document.addEventListener('visibilitychange', onVisibilityChange)
   window.addEventListener('focus', onWindowFocus)
   setupOpenFileListener()
+  setupBeforeCloseListener()
   ed.loadMacros() // 恢复上次保存的宏（此前从未调用，宏重启后必然丢失）
-  fileOps.restoreSession(); startAutoSave()
+  // 设置里的「关闭时恢复文件」开关此前没有任何消费方，这里接线
+  if (ss.config?.ui?.restoreSession !== false) fileOps.restoreSession()
+  startAutoSave()
 })
 onUnmounted(() => {
   window.removeEventListener('keydown', onKeyDown)
@@ -785,6 +849,7 @@ onUnmounted(() => {
   document.removeEventListener('visibilitychange', onVisibilityChange)
   window.removeEventListener('focus', onWindowFocus)
   cleanupOpenFileListener()
+  cleanupBeforeCloseListener()
   stopAutoSave()
 })
 </script>
@@ -796,7 +861,7 @@ onUnmounted(() => {
     <NddMenuBar @cmd="onMenuCmd" />
 
     <!-- 工具栏 -->
-    <NddToolbar v-if="showToolbar" :icon-size="ss.config?.ui?.toolbarIconSize || 18" @toolbar-command="onMenuCmd" />
+    <NddToolbar v-if="showToolbar" :icon-size="ss.config?.ui?.toolbarIconSize || 18" :tailing="tailingStatus" @toolbar-command="onMenuCmd" />
 
     <!-- 主体：侧边栏 + 编辑区 -->
     <div class="flex-1 flex overflow-hidden min-h-0">
@@ -876,7 +941,7 @@ onUnmounted(() => {
       <div v-if="showFileList || showFileTree || showSnippetPanel || showBookmarkPanel || showFunctionList || showFileMonitor" class="panel-resizer" @mousedown="resizeStart" />
 
       <!-- 编辑区 -->
-      <EditorArea class="flex-1 min-w-0" @open-diff="showDiff = true" />
+      <EditorArea class="flex-1 min-w-0" @open-diff="showDiff = true" @open-converter="showFormatConverter = true" />
     </div>
 
     <!-- 底部查找结果面板 -->
@@ -898,7 +963,7 @@ onUnmounted(() => {
     <BatchRenameWin :visible="showBatchRename" @close="showBatchRename = false" />
     <EncodeConvertWin :visible="showEncodeConvert" @close="showEncodeConvert = false" />
     <FormatConverter :visible="showFormatConverter" @close="showFormatConverter = false" />
-    <FileCmpRuleWin :visible="showCmpRule" @close="showCmpRule = false" />
+    <FileCmpRuleWin :visible="showCmpRule" @close="showCmpRule = false" @apply="onCmpRulesApplied" />
     <DirCmpView :visible="showDirCmp" @close="showDirCmp = false" />
     <ClipboardHistoryWin :visible="showClipboardHistory" @close="showClipboardHistory = false" />
     <!-- 🆕 V2.0.0 新组件（浮层） -->

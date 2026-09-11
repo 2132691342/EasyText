@@ -128,7 +128,6 @@ function toggleCollapse() {
         :key="idx"
         class="find-result-item flex items-center px-3 py-1 cursor-pointer hover:bg-blue-50 dark:hover:bg-[#094771] border-b border-gray-100 dark:border-gray-800"
         @click="handleResultClick(result)"
-        @dblclick="handleResultClick(result)"
       >
         <span class="text-xs font-mono text-gray-500 dark:text-gray-400 mr-2 flex-shrink-0">
           {{ result.file.split(/[/\\]/).pop() }}:{{ result.line }}

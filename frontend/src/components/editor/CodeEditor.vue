@@ -37,10 +37,6 @@ import Minimap from './Minimap.vue'
 
 // ==================== Props & Emits ====================
 const props = defineProps<{ tab: EditorTab }>()
-const emit = defineEmits<{
-  (e: 'update:wordWrap', value: boolean): void
-  (e: 'update:indentGuide', value: boolean): void
-}>()
 
 const editorStore = useEditorStore()
 const settingStore = useSettingStore()
@@ -445,11 +441,18 @@ function getLanguageExtension(lang: string): any[] {
 }
 
 // ==================== Theme builder ====================
+/** 编辑器实际字号 = 配置字号 × 界面缩放（此前 ui.zoomLevel 只写不读，放大/缩小点了没反应） */
+function editorFontSizePx(): number {
+  const base = config.value?.editor?.fontSize || 14
+  const zoom = config.value?.ui?.zoomLevel || 100
+  return Math.max(6, Math.round(base * zoom / 100))
+}
+
 function buildAppearanceTheme() {
   const c = colors.value
   return EditorView.theme({
     '&': {
-      fontSize: `${config.value?.editor?.fontSize || 14}px`,
+      fontSize: `${editorFontSizePx()}px`,
       fontFamily: config.value?.editor?.fontFamily || 'Consolas, Monaco, "Courier New", monospace',
       backgroundColor: c.bg, color: c.fg,
     },
@@ -804,7 +807,9 @@ function toggleWordWrap(enable?: boolean) {
   const cur = editorView.lineWrapping
   const w = enable !== undefined ? enable : !cur
   editorView.dispatch({ effects: wordWrapCompartment.reconfigure(w ? EditorView.lineWrapping : []) })
-  emit('update:wordWrap', w)
+  // wordWrap 通过 settingStore 持久化并驱动 reconfigure，无需向上 emit
+  // （原先 emit('update:wordWrap') 没有任何父组件监听，属于空转事件）
+  if (settingStore.config) { settingStore.config.editor.wordWrap = w; settingStore.saveConfig() }
 }
 
 function toggleShowWhitespace(show: boolean) {
@@ -1657,6 +1662,9 @@ function handleEditorCommand(e: Event) {
   if (cmd === 'undo') undoAction()
   else if (cmd === 'redo') redoAction()
   else if (cmd === 'cut') doEditorAction('cut')
+  else if (cmd === 'delete') deleteSelectionOrChar()
+  else if (cmd === 'line-cut') cutCurrentLine()
+  else if (cmd === 'copy-line') lineOperation('duplicate')
   else if (cmd === 'copy') doEditorAction('copy')
   else if (cmd === 'paste') doEditorAction('paste')
   else if (cmd === 'select-all') doEditorAction('selectAll')
@@ -1803,6 +1811,31 @@ function doEditorAction(action: 'cut' | 'copy' | 'paste' | 'selectAll') {
   }
 }
 
+/** 删除选区；无选区时删除光标处字符（对应编辑菜单「删除」） */
+function deleteSelectionOrChar() {
+  if (!editorView) return
+  const { from, to } = editorView.state.selection.main
+  const end = from !== to ? to : Math.min(editorView.state.doc.length, from + 1)
+  if (from === end) return
+  editorView.dispatch({ changes: { from, to: end } })
+  editorView.focus()
+}
+
+/** 剪切当前行：整行进剪贴板并删除该行（对应编辑菜单「剪切当前行」） */
+function cutCurrentLine() {
+  if (!editorView) return
+  const state = editorView.state
+  const line = state.doc.lineAt(state.selection.main.head)
+  const text = line.text
+  navigator.clipboard?.writeText(text).catch(() => {})
+  editorStore.pushClipboard(text)
+  // 连同行尾换行符一起删除，避免留下空行
+  const from = line.number > 1 ? line.from - 1 : line.from
+  const to = line.to < state.doc.length ? line.to + 1 : line.to
+  editorView.dispatch({ changes: { from, to: Math.min(to, state.doc.length) } })
+  editorView.focus()
+}
+
 function doFindAction(dir: 'next' | 'prev') {
   if (!editorView || !lastSearchTerm) return
   const state = editorView.state
@@ -1924,6 +1957,7 @@ watch(() => config.value?.editor?.tabSize, (s) => { if (editorView && s) editorV
 watch(() => config.value?.editor?.wordWrap, (w) => { if (editorView) editorView.dispatch({ effects: wordWrapCompartment.reconfigure(w ? EditorView.lineWrapping : []) }) })
 watch(() => config.value?.editor?.fontSize, reconfigureAppearance)
 watch(() => config.value?.editor?.fontFamily, reconfigureAppearance)
+watch(() => config.value?.ui?.zoomLevel, reconfigureAppearance)
 
 onMounted(() => {
   createEditor()

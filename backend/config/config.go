@@ -16,6 +16,17 @@ type AppConfig struct {
 	Theme   ThemeConfig  `json:"theme"`
 	File    FileConfig   `json:"file"`
 	UI      UIConfig     `json:"ui"`
+	// Shortcuts 用户自定义快捷键；为空表示使用前端内置默认键位表。
+	Shortcuts []ShortcutDef `json:"shortcuts,omitempty"`
+}
+
+// ShortcutDef 一条快捷键定义（与前端 types.ShortcutDef 对应）。
+type ShortcutDef struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Category   string `json:"category"`
+	DefaultKey string `json:"defaultKey"`
+	CurrentKey string `json:"currentKey"`
 }
 
 // EditorConfig represents editor settings
@@ -86,6 +97,10 @@ type UIConfig struct {
 	LastFolder       string          `json:"lastFolder"`       // 🆕 V2.0.0 上次打开的项目目录
 	// 🆕 关闭行为：true 时关闭按钮最小化到托盘；false 时直接退出
 	CloseToTray bool `json:"closeToTray"`
+	// 启动时是否恢复上次会话打开的文件。
+	// 用指针是为了区分「用户显式关闭」与「旧配置文件缺少该字段」：
+	// 缺失（nil）时回落默认 true，不会把老用户的会话恢复能力误关掉。
+	RestoreSession *bool `json:"restoreSession,omitempty"`
 }
 
 // Default configuration values
@@ -145,8 +160,13 @@ var defaultConfig = AppConfig{
 		RecentFilesLimit: 10,
 		// 默认开托盘驻留：防止误关闭丢失正在编辑的内容；用户可自行关闭。
 		CloseToTray: true,
+		// 默认恢复上次会话
+		RestoreSession: &defaultRestoreSession,
 	},
 }
+
+// 取地址需要变量（Go 不允许 &true）
+var defaultRestoreSession = true
 
 // ConfigManager manages application configuration
 type ConfigManager struct {
@@ -284,6 +304,10 @@ func mergeConfig(defaults, loaded AppConfig) AppConfig {
 		}
 		// 兼容 V3：旧版本 JSON 没有 closeToTray 字段，使用默认值（开托盘驻留）
 		_ = loaded.UI.CloseToTray
+		// 旧配置文件没有 restoreSession 字段 → 反序列化为 nil，回落默认（开启）
+		if loaded.UI.RestoreSession == nil {
+			loaded.UI.RestoreSession = defaults.UI.RestoreSession
+		}
 		return loaded
 	}
 
@@ -303,6 +327,7 @@ func mergeConfig(defaults, loaded AppConfig) AppConfig {
 		// V2 配置文件 JSON 缺少 CloseToTray 字段，反序列化得到零值 (false)。
 		// 这里强制覆盖为默认值，保持"默认开托盘"的升级体验一致。
 		loaded.UI.CloseToTray = defaults.UI.CloseToTray
+		loaded.UI.RestoreSession = defaults.UI.RestoreSession
 		return loaded
 	}
 

@@ -211,7 +211,13 @@ function reloadAsHex() {
   closeContextMenu()
   const tab = editorStore.tabs.find(t => t.id === contextMenu.value.tabId)
   if (!tab) return
-  ElMessage.info(`十六进制模式重载: ${tab.name}（开发中）`)
+  if (!tab.path) {
+    ElMessage.warning('该标签没有磁盘文件路径')
+    return
+  }
+  // HexViewer 已改为按页读取磁盘，无需预先加载内容，直接切视图即可
+  tab.viewType = 'hex'
+  ElMessage.success(`已以十六进制视图打开: ${tab.name}`)
 }
 
 function selectLeftCmpFile() {
@@ -505,9 +511,10 @@ onUnmounted(() => {
           <Save class="w-4 h-4 mr-2 text-gray-400" />
           <span>当前文档另存为...</span>
         </div>
-        <div class="context-menu-item" @click="openInNewWindow">
+        <div class="context-menu-item is-disabled" @click="openInNewWindow">
           <ExternalLink class="w-4 h-4 mr-2 text-gray-400" />
           <span>在新窗口中打开</span>
+          <span class="ml-auto text-xs text-gray-400">未实现</span>
         </div>
         <div class="context-menu-item" @click="showInExplorer">
           <FolderOpen class="w-4 h-4 mr-2 text-gray-400" />
@@ -627,6 +634,10 @@ onUnmounted(() => {
 .tab-action--ok:hover { color: #22c55e; }
 .tab-action--warn:hover { color: #f59e0b; }
 .tab-action--danger:hover { color: #ef4444; }
+
+/* 尚未实现的功能：与菜单栏保持一致，置灰并标注，而不是点了只弹一句提示 */
+.context-menu-item.is-disabled { color: var(--et-fg-subtle); cursor: default; }
+.context-menu-item.is-disabled:hover { background: transparent; }
 
 .tab-rename-input {
   width: 100%;

@@ -131,6 +131,8 @@ export interface UIConfig {
   recentFilesLimit: number
   // 🆕 关闭按钮行为：true 时最小化到托盘；false 时直接退出
   closeToTray?: boolean
+  // 启动时是否恢复上次会话打开的文件
+  restoreSession?: boolean
 }
 
 export interface AppConfig {
@@ -139,6 +141,8 @@ export interface AppConfig {
   theme: ThemeConfig
   file: FileConfig
   ui: UIConfig
+  /** 用户自定义快捷键（缺省时用内置默认表） */
+  shortcuts?: ShortcutDef[]
 }
 
 // ---------- 编辑器标签页（notepad-- TabInfo）----------

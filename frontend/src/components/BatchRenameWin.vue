@@ -14,7 +14,6 @@ const emit = defineEmits<{
 
 // State
 const directory = ref('')
-const fileFilter = ref('*')
 const pattern = ref('$N$E')
 const startIndex = ref(1)
 const step = ref(1)
@@ -88,6 +87,7 @@ async function executeRename() {
 
   let successCount = 0
   let failCount = 0
+  const failed: string[] = []
 
   for (const item of previewItems.value) {
     if (item.oldPath === item.newName) {
@@ -100,12 +100,20 @@ async function executeRename() {
       const { RenameFile } = await import('../../wailsjs/go/main/App')
       await RenameFile(oldPath, newPath)
       successCount++
-    } catch {
+    } catch (e: any) {
+      // 记录具体失败原因，而不是只累加一个数字（用户无法知道哪几个文件为何失败）
       failCount++
+      failed.push(`${item.oldPath} → ${item.newName}：${e?.message || '未知错误'}`)
     }
   }
 
-  ElMessage.success(`重命名完成: 成功 ${successCount} 个${failCount > 0 ? `, 失败 ${failCount} 个` : ''}`)
+  if (failCount > 0) {
+    ElMessage.warning(
+      `重命名完成：成功 ${successCount} 个，失败 ${failCount} 个\n` + failed.slice(0, 5).join('\n'),
+    )
+  } else {
+    ElMessage.success(`重命名完成: 成功 ${successCount} 个`)
+  }
   if (successCount > 0) {
     await loadFiles()
   }

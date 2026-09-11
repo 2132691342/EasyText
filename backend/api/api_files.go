@@ -116,6 +116,13 @@ func (h *Handler) ReadFileBytes(path string) ([]byte, error) {
 	return data, nil
 }
 
+// ReadFileChunk 分片读取文件字节（HexViewer 分页浏览用）。
+// 返回 (数据, 文件总大小)，避免一次性把整个文件读进内存并跨桥序列化。
+// 注意：Wails v2 会把 []byte 序列化为 JS number[]，因此 size 需要由调用方限制在页大小量级。
+func (h *Handler) ReadFileChunk(path string, offset int64, size int64) (*file.ChunkResult, error) {
+	return h.fileReader.ReadChunk(path, offset, size)
+}
+
 // SaveFileBytes 保存字节数据到文件（用于 Excel 等二进制文件）。
 // 注意：使用 []int 而非 []byte，因为 Wails v2 将 Go []byte 序列化为 JS []number。
 func (h *Handler) SaveFileBytes(path string, data []int) error {

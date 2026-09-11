@@ -20,9 +20,9 @@ const langLabel = computed(() => tab.value?.language || 'text')
 
 function changeZoom(delta: number) {
   if (!settingStore.config) return
-  const n = Math.max(50, Math.min(200, zoomLevel.value + delta))
-  settingStore.config.ui.zoomLevel = n
-  settingStore.config.editor.fontSize = Math.round((n / 100) * 14)
+  // 只调缩放：字号由 zoomLevel 统一换算（CodeEditor.editorFontSizePx），
+  // 此前这里同时改 fontSize 与 zoomLevel，两者相乘导致缩放被放大两倍。
+  settingStore.config.ui.zoomLevel = Math.max(50, Math.min(200, zoomLevel.value + delta))
   settingStore.saveConfig()
 }
 
@@ -91,7 +91,7 @@ onUnmounted(() => {
     </select>
     <span class="flex-1" />
     <span v-if="tab.path && isItemVisible('filePath')" class="status-item px-2 truncate max-w-[50%]" :title="tab.path">{{ tab.path }}</span>
-    <span v-else-if="isItemVisible('filePath')" class="status-item px-2 text-gray-500 dark:text-gray-300">untitled</span>
+    <span v-else-if="isItemVisible('filePath')" class="status-item px-2 text-[color:var(--et-fg-subtle)]">untitled</span>
   </div>
   <div v-else class="ndd-statusbar flex items-center text-[11px] select-none" @contextmenu="onContextMenu">
     <span class="px-3">就绪</span>
@@ -101,15 +101,15 @@ onUnmounted(() => {
   <Teleport to="body">
     <div
       v-if="showContextMenu"
-      class="fixed z-[100] bg-white dark:bg-[#2d2d2d] border border-gray-200 dark:border-gray-600 rounded shadow-lg py-1 min-w-[160px] text-xs"
+      class="context-menu text-xs min-w-[160px]"
       :style="{ left: contextMenuPos.x + 'px', top: contextMenuPos.y + 'px' }"
       @click.stop
     >
-      <div class="px-3 py-1 text-gray-400 text-[10px] uppercase tracking-wide">状态栏显示项</div>
+      <div class="px-3 py-1 text-[10px] uppercase tracking-wide text-[color:var(--et-fg-subtle)]">状态栏显示项</div>
       <label
         v-for="item in statusBarItemDefs"
         :key="item.key"
-        class="flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:bg-gray-100 dark:hover:bg-[#3c3c3c] text-gray-700 dark:text-gray-200"
+        class="context-menu-item gap-2"
       >
         <input
           type="checkbox"

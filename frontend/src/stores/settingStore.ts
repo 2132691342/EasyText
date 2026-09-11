@@ -68,6 +68,8 @@ export const useSettingStore = defineStore('setting', () => {
       recentFilesLimit: 10,
       // 默认开托盘驻留：避免用户误关后丢失正在编辑的内容。
       closeToTray: true,
+      // 默认恢复上次会话
+      restoreSession: true,
     },
   })
 
@@ -241,7 +243,8 @@ export const useSettingStore = defineStore('setting', () => {
   }
 
   // ============ 快捷键管理（notepad-- shortcutkeymgr）============
-  const shortcuts = ref<ShortcutDef[]>([
+  // DEFAULT_SHORTCUTS 既是初值，也是「恢复默认」的基准。
+  const DEFAULT_SHORTCUTS: ShortcutDef[] = [
     { id: 'new-file', name: '新建文件', category: '文件', defaultKey: 'Ctrl+N', currentKey: 'Ctrl+N' },
     { id: 'open-file', name: '打开文件', category: '文件', defaultKey: 'Ctrl+O', currentKey: 'Ctrl+O' },
     { id: 'save', name: '保存', category: '文件', defaultKey: 'Ctrl+S', currentKey: 'Ctrl+S' },
@@ -279,7 +282,19 @@ export const useSettingStore = defineStore('setting', () => {
     { id: 'clear-highlight', name: '清除高亮', category: '工具', defaultKey: 'F7', currentKey: 'F7' },
     { id: 'record-macro', name: '开始/停止录制宏', category: '宏', defaultKey: 'Ctrl+Shift+R', currentKey: 'Ctrl+Shift+R' },
     { id: 'play-macro', name: '播放宏', category: '宏', defaultKey: 'Ctrl+Shift+P', currentKey: 'Ctrl+Shift+P' },
-  ])
+  ]
+
+  // 用户在设置里改过的键位保存在配置里，重启后恢复；
+  // 此前 shortcuts 只是内存 ref，改键、恢复默认重启即丢。
+  const shortcuts = ref<ShortcutDef[]>(
+    (config.value?.shortcuts?.length ? config.value.shortcuts : DEFAULT_SHORTCUTS).map(s => ({ ...s })),
+  )
+
+  /** 快捷键变更后落盘并通知分发侧 */
+  function persistShortcuts() {
+    if (config.value) config.value.shortcuts = shortcuts.value.map(s => ({ ...s }))
+    void saveConfig()
+  }
 
   const isEditingShortcut = ref(false)
   const editingShortcutId = ref<string | null>(null)
@@ -290,11 +305,34 @@ export const useSettingStore = defineStore('setting', () => {
 
   function updateShortcut(id: string, newKey: string) {
     const s = shortcuts.value.find(t => t.id === id)
-    if (s) s.currentKey = newKey
+    if (!s) return
+    s.currentKey = newKey
+    persistShortcuts()
   }
 
   function resetShortcuts() {
     for (const s of shortcuts.value) s.currentKey = s.defaultKey
+    persistShortcuts()
+  }
+
+  /**
+   * 组合键匹配：判断一次键盘事件是否命中 "Ctrl+Shift+S" 形式的配置键。
+   * MainLayout 的全局快捷键分发用它读取这里保存的用户自定义键位。
+   */
+  function matchShortcut(e: KeyboardEvent, actionId: string): boolean {
+    const combo = getShortcut(actionId)
+    if (!combo) return false
+    const parts = combo.split('+').map(p => p.trim().toLowerCase()).filter(Boolean)
+    if (parts.length === 0) return false
+    const key = parts[parts.length - 1]
+    const needCtrl = parts.includes('ctrl') || parts.includes('cmd')
+    const needShift = parts.includes('shift')
+    const needAlt = parts.includes('alt')
+    if ((e.ctrlKey || e.metaKey) !== needCtrl) return false
+    if (e.shiftKey !== needShift) return false
+    if (e.altKey !== needAlt) return false
+    const pressed = e.key === ' ' ? 'space' : e.key.toLowerCase()
+    return pressed === key
   }
 
   // ============ 🆕 V2.0.0 自动保存模式 ============
@@ -383,7 +421,7 @@ export const useSettingStore = defineStore('setting', () => {
     setFileTreeWidth, setLanguage,
     setEditorFontSize, setEditorFontFamily, setTabSize, setAutoSave,
     saveConfig,
-    getShortcut, updateShortcut, resetShortcuts,
+    getShortcut, updateShortcut, resetShortcuts, matchShortcut,
     // 🆕 V2.0.0
     autoSaveMode, setAutoSaveMode,
     autoTheme, setAutoTheme, enableAutoTheme, disableAutoTheme,

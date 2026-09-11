@@ -5,8 +5,8 @@ import (
 
 	"easy-text/backend/api"
 	"easy-text/backend/config"
-	"easy-text/internal/closepolicy"
-	"easy-text/internal/tray"
+	"easy-text/backend/closepolicy"
+	"easy-text/backend/tray"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -32,6 +32,13 @@ func (a *App) startup(ctx context.Context) {
 	if cfg := config.Config; cfg != nil {
 		closepolicy.Set(cfg.Get().UI.CloseToTray)
 	}
+
+	// 关闭拦截的回执通道：前端完成「未保存内容」裁决后 emit 本事件，
+	// 由 Go 侧置放行标志并真正退出（见 main.go onBeforeClose）。
+	runtime.EventsOn(ctx, "app:quit-force", func(_ ...any) {
+		forceQuit.Store(true)
+		runtime.Quit(ctx)
+	})
 
 	// 处理通过文件关联传入的文件路径
 	if pendingFilePath != "" {

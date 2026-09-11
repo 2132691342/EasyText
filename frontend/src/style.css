@@ -56,12 +56,17 @@ html {
 body {
   margin: 0;
   padding: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  /* 中文字体必须显式声明：Windows 上 Segoe UI 不含汉字字形，
+     缺失时中文会回退到点阵感很强的宋体，是界面「显得丑」的主因之一 */
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei',
+    'PingFang SC', 'Hiragino Sans GB', Roboto, Oxygen, Ubuntu, Cantarell, 'Helvetica Neue', sans-serif;
   font-size: 14px;
   line-height: 1.5;
-  color: #333;
-  background-color: #fff;
+  color: var(--et-fg);
+  background-color: var(--et-bg);
   overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   /* WebView2 默认 UA stylesheet 会设置 -webkit-user-drag: element，
      这会劫持鼠标拖拽事件，导致 CodeMirror 无法正常进行文本选择。
      修复方案：全局禁用 user-drag */
@@ -69,8 +74,8 @@ body {
 }
 
 html.dark body {
-  color: #e0e0e0;
-  background-color: #1e1e1e;
+  color: var(--et-fg);
+  background-color: var(--et-bg);
 }
 
 #app {
@@ -443,3 +448,28 @@ html.dark .el-popper.is-dark {
   background-color: #3c3c3c;
   color: #e0e0e0;
 }
+
+/* ============================================================
+   存量硬编码色兼容层
+   ------------------------------------------------------------
+   历史组件大量直接写 Tailwind 字面色（bg-white / dark:bg-[#252526] /
+   text-gray-400 …）并各自维护 html.dark 覆盖，涉及 20+ 组件、百余处。
+   逐个改写收益与风险不成正比，这里集中把这些字面色重定向到语义令牌，
+   保证主题切换时全局一致；新代码请直接使用 --et-* 变量，不要再加字面色。
+   ============================================================ */
+html.dark .dark\:bg-\[\#1e1e1e\] { background-color: var(--et-bg); }
+html.dark .dark\:bg-\[\#252525\],
+html.dark .dark\:bg-\[\#252526\] { background-color: var(--et-bg-sunken); }
+html.dark .dark\:bg-\[\#2d2d2d\] { background-color: var(--et-bg-elevated); }
+html.dark .dark\:bg-\[\#3c3c3c\] { background-color: var(--et-bg-elevated); }
+html.dark .dark\:bg-\[\#454545\] { background-color: var(--et-bg-elevated); }
+html.dark .dark\:hover\:bg-\[\#2a2a2a\]:hover,
+html.dark .dark\:hover\:bg-\[\#2a2d2e\]:hover { background-color: var(--et-bg-hover); }
+html.dark .dark\:hover\:bg-\[\#3c3c3c\]:hover { background-color: var(--et-bg-hover); }
+html.dark .dark\:hover\:bg-\[\#4a4a4a\]:hover,
+html.dark .dark\:hover\:bg-\[\#4c4c4c\]:hover { background-color: var(--et-bg-active); }
+html.dark .dark\:text-gray-200,
+html.dark .dark\:text-gray-300 { color: var(--et-fg); }
+html.dark .dark\:text-gray-400 { color: var(--et-fg-muted); }
+html.dark .dark\:border-gray-600,
+html.dark .dark\:border-gray-700 { border-color: var(--et-border); }

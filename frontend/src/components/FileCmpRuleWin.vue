@@ -79,6 +79,7 @@ function apply() {
                   <option :value="70">匹配 >= 70%</option>
                   <option :value="90">匹配 >= 90%</option>
                 </select>
+                <span class="text-[11px] text-gray-400">（预留：当前为逐行精确对比）</span>
               </div>
             </div>
           </fieldset>

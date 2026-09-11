@@ -13,10 +13,10 @@ const entries = ref<any[]>([])
 const loading = ref(false)
 
 async function pickLeft() {
-  try { const p = await OpenDirectoryDialog(); if (p) { leftDir.value = p; runCompare() } } catch (e) { console.warn(e) }
+  try { const p = await OpenDirectoryDialog(); if (p) { leftDir.value = p; runCompare() } } catch (e: any) { ElMessage.error('选择目录失败：' + (e?.message || '')) }
 }
 async function pickRight() {
-  try { const p = await OpenDirectoryDialog(); if (p) { rightDir.value = p; runCompare() } } catch (e) { console.warn(e) }
+  try { const p = await OpenDirectoryDialog(); if (p) { rightDir.value = p; runCompare() } } catch (e: any) { ElMessage.error('选择目录失败：' + (e?.message || '')) }
 }
 
 async function runCompare() {

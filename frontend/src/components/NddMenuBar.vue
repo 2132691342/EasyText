@@ -1,7 +1,9 @@
 <script lang="ts" setup>
 import { ref, reactive, onMounted, onUnmounted, watch } from 'vue'
+import { ElMessage } from 'element-plus'
 import { useEditorStore } from '@/stores'
 import { GetRecentFiles } from '../../wailsjs/go/main/App'
+import { NOT_IMPLEMENTED } from '@/utils/commands'
 
 const emit = defineEmits<{ (e: 'cmd', name: string, ...args: any[]): void }>()
 const editor = useEditorStore()
@@ -412,6 +414,8 @@ onUnmounted(() => {
 const active = ref(-1)
 const subKey = ref('')
 const langLetter = ref('')
+// 子菜单靠右空间不足时向左展开，避免被窗口边缘裁切
+const subFlip = ref(false)
 const checks = ref<Record<string, boolean>>({ wrap: false, filelist: false, toolbar: true, statusbar: true, webaddr: false, spaces: false, eol: false, all: false })
 const radios = ref<Record<string, string>>({ le: 'CRLF', enc: 'UTF-8', iconsize: '20', lang: 'zh-CN', mark: '' })
 
@@ -421,7 +425,20 @@ function toggle(i: number) { active.value === i ? closeAll() : open(i) }
 function onHover(i: number) { if (active.value >= 0 && i !== active.value) open(i) }
 function closeAll() { active.value = -1; subKey.value = ''; langLetter.value = '' }
 
+/** 该命令当前版本是否有真实实现（未实现的置灰，避免点击后毫无反应） */
+function isOff(it: Item): boolean {
+  return !!it.cmd && NOT_IMPLEMENTED.has(it.cmd)
+}
+
+function openSub(key: string, e: MouseEvent) {
+  subKey.value = key
+  const rect = (e.currentTarget as HTMLElement)?.getBoundingClientRect()
+  // 右侧空间不足以再放一个子菜单（按 460px 估算）则向左展开
+  subFlip.value = !!rect && rect.right + 460 > window.innerWidth
+}
+
 function clickItem(it: Item) {
+  if (isOff(it)) { ElMessage.info('该功能暂未实现'); closeAll(); return }
   if (it.sub) { subKey.value = it.sub; return }
   if (it.chk) {
     if (it.st) { checks.value[it.st] = !checks.value[it.st]; emit('cmd', it.cmd!) }
@@ -443,6 +460,7 @@ function checked(it: Item): boolean {
 }
 
 function pickSub(it: Item) {
+  if (isOff(it)) { ElMessage.info('该功能暂未实现'); closeAll(); return }
   if (it.sub) subKey.value = it.sub
   else if (it.cmd) { emit('cmd', it.cmd); closeAll() }
 }
@@ -461,20 +479,20 @@ function pickLang(lang: string) { emit('cmd', 'set-lang', lang); closeAll() }
       <div v-if="isOpen(idx) && menu.items.length > 0" class="menu-dd">
         <template v-for="(it, i) in (menu.label.startsWith('语言') ? [] : menu.items)" :key="i">
           <div v-if="it.sep" class="menu-sep" />
-          <div v-else class="menu-row" :class="{ hl: subKey === it.sub }"
+          <div v-else class="menu-row" :class="{ hl: subKey === it.sub, off: isOff(it) }"
             @click.stop="clickItem(it)"
-            @mouseenter="it.sub && (subKey = it.sub)">
+            @mouseenter="it.sub && openSub(it.sub, $event)">
             <span class="flex items-center gap-1">
               <span v-if="it.chk" class="w-3 text-center blue">{{ checked(it) ? '✓' : '' }}</span>
               <span>{{ showLabel(it.label) }}</span>
             </span>
             <span v-if="it.key" class="menu-short">{{ it.key }}</span>
             <span v-else-if="it.sub" class="menu-arrow">▶</span>
-            <!-- ★ 子菜单嵌套在 menu-row 内部，跟随行位置 -->
-            <div v-if="it.sub && subKey === it.sub && SUBS[it.sub]" class="menu-sub">
+            <!-- ★ 子菜单嵌套在 menu-row 内部，跟随行位置；空间不足时向左翻转 -->
+            <div v-if="it.sub && subKey === it.sub && SUBS[it.sub]" class="menu-sub" :class="{ flip: subFlip }">
               <template v-for="(si, j) in SUBS[it.sub]" :key="j">
                 <div v-if="si.sep" class="menu-sep" />
-                <div v-else class="menu-row" @click.stop="pickSub(si)">
+                <div v-else class="menu-row" :class="{ off: isOff(si) }" @click.stop="pickSub(si)">
                   <span class="flex items-center gap-1">
                     <span v-if="si.chk" class="w-3 text-center blue">{{ checked(si) ? '✓' : '' }}</span>
                     <span>{{ showLabel(si.label) }}</span>
@@ -522,6 +540,7 @@ function pickLang(lang: string) { emit('cmd', 'set-lang', lang); closeAll() }
 
 .menu-dd {
   position: absolute; left: 0; top: calc(100% + 4px); z-index: 9999; min-width: 220px;
+  max-height: calc(100vh - 80px); overflow-y: auto; overscroll-behavior: contain;
   background: var(--et-bg-elevated); border: 1px solid var(--et-border);
   box-shadow: var(--et-shadow-md);
   border-radius: var(--et-radius); padding: 4px; font-size: 12px;
@@ -534,16 +553,23 @@ function pickLang(lang: string) { emit('cmd', 'set-lang', lang); closeAll() }
   transition: background .1s ease, color .1s ease;
 }
 .menu-row:hover, .menu-row.hl { background: var(--et-accent-soft); color: var(--et-accent); }
+/* 未接线的命令：明确置灰，不再伪装成可用项 */
+.menu-row.off { color: var(--et-fg-subtle); cursor: default; }
+.menu-row.off:hover { background: transparent; color: var(--et-fg-subtle); }
 
 /* ★ 子菜单：嵌套在 .menu-row 内部，top:-4px 抵消父级 padding 对齐当前行 */
 .menu-sub {
   position: absolute; left: calc(100% + 4px); top: -5px; z-index: 10000; min-width: 220px;
+  max-height: calc(100vh - 80px); overflow-y: auto; overscroll-behavior: contain;
   background: var(--et-bg-elevated); border: 1px solid var(--et-border);
   box-shadow: var(--et-shadow-md);
   border-radius: var(--et-radius); padding: 4px; font-size: 12px;
 }
+/* 靠右空间不足时向左展开 */
+.menu-sub.flip { left: auto; right: calc(100% + 4px); }
 
 .menu-sep { margin: 4px 6px; height: 1px; background: var(--et-border); }
-.menu-short, .menu-arrow { margin-left: 24px; font-size: 11px; color: var(--et-fg-subtle); }
+.menu-short, .menu-arrow { margin-left: auto; padding-left: 20px; font-size: 11px; color: var(--et-fg-subtle); }
+.menu-arrow { font-size: 9px; }
 .blue { color: var(--et-accent); }
 </style>

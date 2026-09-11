@@ -5,10 +5,11 @@ import (
 	"embed"
 	"fmt"
 	"os"
+	"sync/atomic"
 
-	"easy-text/internal/closepolicy"
-	"easy-text/internal/singleinstance"
-	"easy-text/internal/tray"
+	"easy-text/backend/closepolicy"
+	"easy-text/backend/singleinstance"
+	"easy-text/backend/tray"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -103,11 +104,29 @@ func main() {
 
 // onBeforeClose 由 Wails 在收到窗口关闭请求时回调。
 // 返回 prevent=true 表示阻止关闭，让窗口隐藏到托盘（依赖 closepolicy 状态）。
+//
+// 未保存拦截：Go 侧并不掌握编辑器里的脏状态（内容都在前端），因此这里
+// 统一把关闭请求以事件形式抛给前端裁决：
+//   - 前端确认可以退出（已保存或用户放弃）→ EventsEmit("app:quit-force")
+//     → 本函数放行，进程退出；
+//   - 用户取消 → 前端什么都不做，窗口保持打开。
+//
+// forceQuit 是"前端已确认"的放行标志，避免 runtime.Quit 再次触发本回调时
+// 形成「永远阻止关闭」的死循环。
+var forceQuit atomic.Bool
+
 func onBeforeClose(ctx context.Context) (prevent bool) {
-	if !closepolicy.IsEnabled() {
+	// 前端已确认退出（或托盘「退出」菜单触发）：放行
+	if forceQuit.Load() {
 		return false
 	}
-	runtime.WindowHide(ctx)
+	// 关闭到托盘策略开启时，先隐藏窗口
+	if closepolicy.IsEnabled() {
+		runtime.WindowHide(ctx)
+		return true
+	}
+	// 直接退出模式：交给前端处理未保存内容
+	runtime.EventsEmit(ctx, "app:before-close")
 	return true
 }
 
@@ -128,6 +147,8 @@ func showMainWindow() {
 func quitApp() {
 	if appCtx != nil {
 		closepolicy.Set(false)
+		// 托盘「退出」是用户明确指令，跳过前端的未保存询问直接退出。
+		forceQuit.Store(true)
 		runtime.Quit(appCtx)
 	}
 }

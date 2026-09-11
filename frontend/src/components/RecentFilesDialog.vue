@@ -30,7 +30,10 @@ async function loadData() {
     // 后端默认 10，UI 不会硬截断用户在设置里填的更大数。
     recentFiles.value = (files || []).slice(0, 50)
     recentFolders.value = (folders || []).slice(0, 50)
-  } catch { /* ignore */ }
+  } catch (e: any) {
+    // 失败时与「暂无记录」在界面上无法区分，这里明确提示
+    ElMessage.error('加载最近记录失败: ' + (e?.message || ''))
+  }
   loading.value = false
 }
 
@@ -57,7 +60,9 @@ async function browseFile() {
       emit('open-file', path)
       emit('close')
     }
-  } catch (e) { console.warn(e) }
+  } catch (e: any) {
+    ElMessage.error('打开文件失败: ' + (e?.message || ''))
+  }
 }
 
 async function clearRecent(section: 'files' | 'folders') {

@@ -321,6 +321,60 @@ func (fr *FileReader) ReadPartial(path string, offset, count int) (string, error
 	return strings.Join(lines, "\n"), nil
 }
 
+// ChunkResult 表示一次分片读取的结果。
+type ChunkResult struct {
+	Data  []byte `json:"data"`
+	Total int64  `json:"total"`
+}
+
+// ReadChunk 按字节区间读取文件，返回数据与文件总大小。
+//
+// 用途：HexViewer 分页浏览二进制/大文件。此前前端用 ReadFileBytes 一次性读入
+// 整个文件并跨 Wails 桥序列化成 []number，100MB 文件会膨胀成上亿个数字字面量，
+// 内存与解析开销都不可接受。改为按页只取所需区间（默认 16KB），复杂度 O(size)。
+//
+// 语义：
+//   - offset < 0 视为 0；offset 超过文件末尾返回空数据（不报错）；
+//   - size <= 0 时读取 offset 之后的全部剩余内容；
+//   - 使用 ReadAt 随机访问，不扫描文件头。
+func (fr *FileReader) ReadChunk(path string, offset, size int64) (*ChunkResult, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, utils.ErrFileNotFound
+		}
+		return nil, utils.WrapError(1002, "无法访问文件", err)
+	}
+	defer f.Close()
+
+	stat, err := f.Stat()
+	if err != nil {
+		return nil, utils.WrapError(1002, "无法读取文件信息", err)
+	}
+	if stat.IsDir() {
+		return nil, utils.NewAppError(1005, "目标不是文件", path)
+	}
+
+	total := stat.Size()
+	if offset < 0 {
+		offset = 0
+	}
+	if offset >= total {
+		return &ChunkResult{Data: []byte{}, Total: total}, nil
+	}
+	remain := total - offset
+	if size <= 0 || size > remain {
+		size = remain
+	}
+
+	buf := make([]byte, size)
+	n, err := f.ReadAt(buf, offset)
+	if err != nil && err != io.EOF {
+		return nil, utils.WrapError(1002, "无法读取文件", err)
+	}
+	return &ChunkResult{Data: buf[:n], Total: total}, nil
+}
+
 // GetFileInfo returns file information without reading content
 func (fr *FileReader) GetFileInfo(path string) (*FileInfo, error) {
 	stat, err := os.Stat(path)

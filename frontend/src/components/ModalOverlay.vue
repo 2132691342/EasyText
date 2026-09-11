@@ -1,5 +1,16 @@
 <script lang="ts" setup>
-defineProps<{
+/**
+ * 通用模态浮层
+ *
+ * 本轮修复：
+ *  - ESC 关不掉：原来把 @keydown.escape 挂在 backdrop div 上，而该 div 没有
+ *    tabindex、也不一定会获得焦点，键盘事件根本冒泡不到它。改为在 visible
+ *    期间直接监听 document（并在卸载/关闭时移除）。
+ *  - 样式令牌化：容器/头部/按钮原本是字面色 + html.dark 覆盖。
+ */
+import { watch, onUnmounted } from 'vue'
+
+const props = defineProps<{
   visible: boolean
   title?: string
   width?: string
@@ -9,6 +20,21 @@ defineProps<{
 const emit = defineEmits<{
   (e: 'close'): void
 }>()
+
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') emit('close')
+}
+
+watch(
+  () => props.visible,
+  (v) => {
+    if (v) document.addEventListener('keydown', onKeydown)
+    else document.removeEventListener('keydown', onKeydown)
+  },
+  { immediate: true },
+)
+
+onUnmounted(() => document.removeEventListener('keydown', onKeydown))
 </script>
 
 <template>
@@ -17,7 +43,6 @@ const emit = defineEmits<{
       v-if="visible"
       class="modal-backdrop"
       @click.self="emit('close')"
-      @keydown.escape="emit('close')"
     >
       <div
         class="modal-container"
@@ -26,7 +51,7 @@ const emit = defineEmits<{
         <!-- Header -->
         <div v-if="title || $slots.header" class="modal-header">
           <slot name="header">
-            <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-200">{{ title }}</h2>
+            <h2 class="modal-title">{{ title }}</h2>
           </slot>
           <button
             class="modal-close-btn"
@@ -53,7 +78,7 @@ const emit = defineEmits<{
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, .45);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -62,75 +87,58 @@ const emit = defineEmits<{
 }
 
 .modal-container {
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  background: var(--et-bg-elevated);
+  color: var(--et-fg);
+  border: 1px solid var(--et-border);
+  border-radius: var(--et-radius);
+  box-shadow: var(--et-shadow-md);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  animation: modal-in 0.15s ease-out;
-}
-
-:global(html.dark) .modal-container {
-  background: #1e1e1e;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  animation: modal-in .15s ease-out;
 }
 
 .modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 16px;
-  border-bottom: 1px solid #e5e7eb;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--et-border);
+  background: var(--et-bg-sunken);
+  border-radius: var(--et-radius) var(--et-radius) 0 0;
 }
-
-:global(html.dark) .modal-header {
-  border-bottom-color: #374151;
-}
+.modal-title { margin: 0; font-size: 13px; font-weight: 600; color: var(--et-fg); }
 
 .modal-close-btn {
   padding: 4px 8px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--et-radius-sm);
   background: transparent;
-  color: #9ca3af;
+  color: var(--et-fg-subtle);
   font-size: 14px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background .15s ease, color .15s ease;
 }
-
-.modal-close-btn:hover {
-  background: #f3f4f6;
-  color: #374151;
-}
-
-:global(html.dark) .modal-close-btn:hover {
-  background: #374151;
-  color: #e5e7eb;
-}
+.modal-close-btn:hover { background: var(--et-bg-hover); color: var(--et-fg); }
 
 .modal-body {
   flex: 1;
   overflow: auto;
-  padding: 16px;
+  padding: 14px;
 }
 
 .modal-footer {
-  padding: 10px 16px;
-  border-top: 1px solid #e5e7eb;
+  padding: 10px 14px;
+  border-top: 1px solid var(--et-border);
   display: flex;
   justify-content: flex-end;
   gap: 8px;
 }
 
-:global(html.dark) .modal-footer {
-  border-top-color: #374151;
-}
-
 @keyframes modal-in {
   from {
     opacity: 0;
-    transform: scale(0.96) translateY(-8px);
+    transform: scale(.96) translateY(-8px);
   }
   to {
     opacity: 1;

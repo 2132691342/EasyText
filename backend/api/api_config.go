@@ -2,7 +2,7 @@ package api
 
 import (
 	"easy-text/backend/config"
-	"easy-text/internal/closepolicy"
+	"easy-text/backend/closepolicy"
 )
 
 // === Configuration ===

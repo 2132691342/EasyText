@@ -1,28 +1,39 @@
 <script lang="ts" setup>
-import { ref, computed, watch, onMounted } from 'vue'
+/**
+ * 十六进制查看器
+ *
+ * 本轮修复的四个问题：
+ *  1. 性能：此前用 ReadFileBytes 一次性把整个文件读进内存，再跨 Wails 桥
+ *     序列化成 number[]。100MB 文件会膨胀成上亿个 JSON 数字字面量，必卡死。
+ *     改为按页调用 ReadFileChunk（ReadAt 随机访问），内存占用恒定为一页。
+ *  2. 切换标签不重载：原实现只在 onMounted 加载一次，切到另一个 hex 标签
+ *     仍显示上一个文件的内容。
+ *  3. 菜单/工具栏的十六进制翻页命令（pre/next/goto-hex-page）无人接听，
+ *     点击无效。现监听 editor-command 接线。
+ *  4. 原生 window.prompt 在 WebView2 中不可靠，转到页改用 Element Plus 弹窗。
+ */
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import type { EditorTab } from '@/types'
-import { ReadFileBytes } from '../../../wailsjs/go/main/App'
-import { ChevronLeft, ChevronRight, ArrowRightToLine, Copy, RefreshCw } from 'lucide-vue-next'
-import { ElMessage } from 'element-plus'
+import { ReadFileChunk, ReadFileBytes } from '../../../wailsjs/go/main/App'
+import { ChevronLeft, ChevronRight, ArrowRightToLine, Copy, RefreshCw, FileText } from 'lucide-vue-next'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 const props = defineProps<{
   tab: EditorTab
 }>()
 
-// State
-const hexData = ref<number[]>([])
-const loading = ref(false)
-const pageSize = 64 * 16 // 64 lines * 16 bytes per line = 1024 bytes per page
+const pageSize = 64 * 16 // 64 行 × 16 字节 = 1024 字节/页
+const buffer = ref<number[]>([])
+const totalBytes = ref(0)
 const currentPage = ref(1)
-const totalPages = ref(1)
-const showAscii = ref(true)
+const loading = ref(false)
 
-// Computed
+const totalPages = computed(() => Math.max(1, Math.ceil(totalBytes.value / pageSize)))
+
 const hexRows = computed(() => {
-  const data = currentPageData.value
   const rows: { offset: number; hex: string[]; ascii: string }[] = []
-  for (let i = 0; i < data.length; i += 16) {
-    const chunk = data.slice(i, i + 16)
+  for (let i = 0; i < buffer.value.length; i += 16) {
+    const chunk = buffer.value.slice(i, i + 16)
     const offset = (currentPage.value - 1) * pageSize + i
     const hex = chunk.map(b => b.toString(16).padStart(2, '0').toUpperCase())
     const ascii = chunk.map(b => (b >= 32 && b <= 126) ? String.fromCharCode(b) : '.').join('')
@@ -31,162 +42,267 @@ const hexRows = computed(() => {
   return rows
 })
 
-const currentPageData = computed(() => {
-  const start = (currentPage.value - 1) * pageSize
-  return hexData.value.slice(start, start + pageSize)
-})
+/** 降级模式：绑定不可用时退回整文件读取（功能可用但占内存） */
+const fallback = ref(false)
+let fallbackBytes: number[] | null = null
 
-// Load data
-async function loadHexData() {
-  if (!props.tab.path) return
+/** 加载指定页（数据不进内存常驻，只保留当前页） */
+async function loadPage(page: number) {
+  const path = props.tab.path
+  if (!path) return
+  const target = Math.min(Math.max(1, page), totalPages.value)
   loading.value = true
   try {
-    const bytes = await ReadFileBytes(props.tab.path)
-    hexData.value = bytes
-    totalPages.value = Math.ceil(bytes.length / pageSize)
-    currentPage.value = 1
-  } catch (e) {
+    if (!fallback.value) {
+      try {
+        const res = await ReadFileChunk(path, (target - 1) * pageSize, pageSize)
+        buffer.value = (res?.data ?? []) as unknown as number[]
+        totalBytes.value = Number(res?.total ?? 0)
+        currentPage.value = target
+        return
+      } catch (e) {
+        // 分片接口不可用（例如绑定未注册）时自动降级，保证十六进制视图仍可查看
+        console.warn('ReadFileChunk unavailable, falling back to full read:', e)
+        fallback.value = true
+      }
+    }
+    if (!fallbackBytes) {
+      fallbackBytes = (await ReadFileBytes(path)) as unknown as number[]
+    }
+    totalBytes.value = fallbackBytes.length
+    buffer.value = fallbackBytes.slice((target - 1) * pageSize, target * pageSize)
+    currentPage.value = target
+  } catch {
     ElMessage.error('读取文件失败')
+    buffer.value = []
   } finally {
     loading.value = false
   }
 }
 
-// Navigation
 function prevPage() {
-  if (currentPage.value > 1) currentPage.value--
+  if (currentPage.value > 1) loadPage(currentPage.value - 1)
 }
 
 function nextPage() {
-  if (currentPage.value < totalPages.value) currentPage.value++
+  if (currentPage.value < totalPages.value) loadPage(currentPage.value + 1)
 }
 
-function gotoPage() {
-  const input = prompt(`转到页 (1-${totalPages.value}):`, String(currentPage.value))
-  if (input) {
-    const page = parseInt(input)
-    if (page >= 1 && page <= totalPages.value) {
-      currentPage.value = page
-    }
-  }
+async function gotoPage() {
+  try {
+    const { value } = await ElMessageBox.prompt(
+      `转到页 (1 - ${totalPages.value})`,
+      '转到页',
+      {
+        inputValue: String(currentPage.value),
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        inputPattern: /^\d+$/,
+        inputErrorMessage: '请输入页码数字',
+      },
+    )
+    const page = parseInt(value, 10)
+    if (page >= 1 && page <= totalPages.value) await loadPage(page)
+    else ElMessage.warning(`页码范围 1 - ${totalPages.value}`)
+  } catch { /* 用户取消 */ }
 }
 
-// Copy hex or ascii
 function copyHex() {
   const text = hexRows.value.map(r => r.hex.join(' ')).join('\n')
-  navigator.clipboard.writeText(text).then(() => ElMessage.success('十六进制数据已复制'))
+  navigator.clipboard.writeText(text)
+    .then(() => ElMessage.success('十六进制数据已复制'))
+    .catch(() => ElMessage.error('复制失败'))
 }
 
 function copyAscii() {
   const text = hexRows.value.map(r => r.ascii).join('\n')
-  navigator.clipboard.writeText(text).then(() => ElMessage.success('ASCII 文本已复制'))
+  navigator.clipboard.writeText(text)
+    .then(() => ElMessage.success('ASCII 文本已复制'))
+    .catch(() => ElMessage.error('复制失败'))
 }
 
-// Format
 function formatOffset(offset: number): string {
   return offset.toString(16).padStart(8, '0').toUpperCase()
 }
 
-onMounted(() => {
-  loadHexData()
+/** 菜单 / 工具栏的十六进制翻页命令此前无人处理，接上后按钮与菜单都能用 */
+function onEditorCommand(e: Event) {
+  const detail = (e as CustomEvent).detail
+  const cmd = typeof detail === 'string' ? detail : detail?.cmd
+  if (cmd === 'pre-hex-page') prevPage()
+  else if (cmd === 'next-hex-page') nextPage()
+  else if (cmd === 'goto-hex-page') gotoPage()
+}
+
+/** 切换标签时重新加载：相同组件实例复用，props.tab 变化不会触发 onMounted */
+watch(() => props.tab.path, (p, old) => {
+  if (p && p !== old) {
+    buffer.value = []
+    totalBytes.value = 0
+    fallback.value = false
+    fallbackBytes = null
+    loadPage(1)
+  }
 })
+
+onMounted(() => {
+  loadPage(1)
+  document.addEventListener('editor-command', onEditorCommand)
+})
+onUnmounted(() => document.removeEventListener('editor-command', onEditorCommand))
 </script>
 
 <template>
-  <div class="h-full flex flex-col bg-white dark:bg-[#1e1e1e]">
+  <div class="hex-view">
     <!-- Toolbar -->
-    <div class="flex items-center h-7 px-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#2d2d2d] gap-2 flex-shrink-0">
-      <span class="text-xs text-gray-500 dark:text-gray-400">十六进制查看: {{ tab.name }}</span>
-      <div class="w-px h-4 bg-gray-300 dark:bg-gray-600"></div>
-      <button class="hex-btn" @click="prevPage" :disabled="currentPage <= 1" title="上一页">
-        <ChevronLeft class="w-3.5 h-3.5" />
+    <div class="hex-bar">
+      <FileText :size="14" class="hex-bar-icon" />
+      <span class="hex-bar-name" :title="tab.path">{{ tab.name }}</span>
+      <span class="hex-sep" />
+      <button class="hex-btn" :disabled="currentPage <= 1" title="上一页" @click="prevPage">
+        <ChevronLeft :size="14" />
       </button>
-      <span class="text-xs text-gray-500 dark:text-gray-400">页 {{ currentPage }} / {{ totalPages }}</span>
-      <button class="hex-btn" @click="nextPage" :disabled="currentPage >= totalPages" title="下一页">
-        <ChevronRight class="w-3.5 h-3.5" />
+      <span class="hex-page">页 {{ currentPage }} / {{ totalPages }}</span>
+      <button class="hex-btn" :disabled="currentPage >= totalPages" title="下一页" @click="nextPage">
+        <ChevronRight :size="14" />
       </button>
-      <button class="hex-btn" @click="gotoPage" title="转到页">
-        <ArrowRightToLine class="w-3.5 h-3.5" />
+      <button class="hex-btn" title="转到页" @click="gotoPage">
+        <ArrowRightToLine :size="14" />
       </button>
-      <div class="w-px h-4 bg-gray-300 dark:bg-gray-600"></div>
-      <button class="hex-btn" @click="loadHexData" title="刷新">
-        <RefreshCw class="w-3.5 h-3.5" />
+      <span class="hex-sep" />
+      <button class="hex-btn" title="重新加载" @click="loadPage(currentPage)">
+        <RefreshCw :size="14" />
       </button>
-      <div class="w-px h-4 bg-gray-300 dark:bg-gray-600"></div>
-      <button class="hex-btn" @click="copyHex" title="复制十六进制">
-        <Copy class="w-3.5 h-3.5" />
+      <button class="hex-btn" title="复制十六进制" @click="copyHex">
+        <Copy :size="14" />
       </button>
-      <span class="text-xs text-gray-500 dark:text-gray-400 ml-auto">
-        {{ hexData.length.toLocaleString() }} 字节
-      </span>
+      <button class="hex-btn" title="复制 ASCII" @click="copyAscii">
+        <Copy :size="14" />
+      </button>
+      <span class="hex-spacer" />
+      <span class="hex-info">{{ totalBytes.toLocaleString() }} 字节</span>
     </div>
 
-    <!-- Hex content -->
-    <div v-if="loading" class="flex-1 flex items-center justify-center text-xs text-gray-400">
-      加载中...
-    </div>
-    <div v-else class="flex-1 overflow-auto font-mono text-xs">
-      <div
-        v-for="(row, idx) in hexRows"
-        :key="idx"
-        class="flex items-center hover:bg-blue-50 dark:hover:bg-[#094771] border-b border-gray-50 dark:border-gray-800"
-      >
-        <!-- Offset -->
-        <span class="hex-offset text-gray-400 dark:text-gray-500 px-3 py-0.5 select-none">{{ formatOffset(row.offset) }}</span>
-        <span class="text-gray-300 dark:text-gray-600 select-none">│</span>
-        <!-- Hex bytes -->
-        <span class="hex-bytes px-2 py-0.5">
+    <!-- Content -->
+    <div v-if="loading" class="hex-empty">加载中…</div>
+    <div v-else-if="hexRows.length === 0" class="hex-empty">文件为空</div>
+    <div v-else class="hex-body">
+      <div v-for="(row, idx) in hexRows" :key="idx" class="hex-row">
+        <span class="hex-offset">{{ formatOffset(row.offset) }}</span>
+        <span class="hex-pipe">│</span>
+        <span class="hex-bytes">
           <span
             v-for="(b, bi) in row.hex"
             :key="bi"
             class="hex-byte"
-            :class="bi === 7 ? 'mr-3' : ''"
+            :class="{ 'hex-byte-gap': bi === 7 }"
           >{{ b }}</span>
         </span>
-        <span class="text-gray-300 dark:text-gray-600 select-none">│</span>
-        <!-- ASCII -->
-        <span class="hex-ascii px-3 py-0.5 text-gray-500 dark:text-gray-400">{{ row.ascii }}</span>
+        <span class="hex-pipe">│</span>
+        <span class="hex-ascii">{{ row.ascii }}</span>
       </div>
     </div>
 
     <!-- Footer -->
-    <div class="flex items-center h-6 px-2 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#2d2d2d] text-xs text-gray-400 flex-shrink-0">
-      <span>页大小: {{ pageSize }} 字节 | 偏移: {{ formatOffset((currentPage - 1) * pageSize) }} - {{ formatOffset(Math.min(currentPage * pageSize - 1, hexData.length)) }}</span>
+    <div class="hex-foot">
+      <span>页大小 {{ pageSize }} 字节</span>
+      <span class="hex-sep" />
+      <span>偏移 {{ formatOffset((currentPage - 1) * pageSize) }} - {{ formatOffset(Math.max(0, Math.min(currentPage * pageSize - 1, totalBytes - 1))) }}</span>
     </div>
   </div>
 </template>
 
 <style scoped>
+/* 令牌化：此前工具栏/行分隔线/字节色均为字面色值，深浅色下与整体不一致 */
+.hex-view {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--et-bg);
+  color: var(--et-fg);
+  font-family: 'Cascadia Mono', Consolas, Monaco, monospace;
+}
+
+.hex-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 30px;
+  padding: 0 8px;
+  flex-shrink: 0;
+  background: var(--et-bg-sunken);
+  border-bottom: 1px solid var(--et-border);
+  font-size: 12px;
+}
+.hex-bar-icon { color: var(--et-fg-subtle); flex-shrink: 0; }
+.hex-bar-name {
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--et-fg);
+  margin-left: 4px;
+}
+.hex-page { color: var(--et-fg-muted); padding: 0 4px; }
+.hex-info { color: var(--et-fg-subtle); }
+.hex-spacer { flex: 1 1 auto; }
+.hex-sep { width: 1px; height: 14px; background: var(--et-border); margin: 0 6px; flex-shrink: 0; }
+
 .hex-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 2px 4px;
+  width: 24px;
+  height: 22px;
   border: none;
+  border-radius: var(--et-radius-sm);
   background: transparent;
-  color: rgb(107, 114, 128);
-  border-radius: 3px;
+  color: var(--et-fg-muted);
   cursor: pointer;
+  transition: background .12s ease, color .12s ease;
 }
-.hex-btn:hover:not(:disabled) {
-  background: rgba(59, 130, 246, 0.1);
-  color: rgb(59, 130, 246);
+.hex-btn:hover:not(:disabled) { background: var(--et-bg-hover); color: var(--et-accent); }
+.hex-btn:disabled { opacity: .35; cursor: default; }
+
+.hex-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--et-fg-subtle);
+  font-size: 12px;
 }
-.hex-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-.hex-offset, .hex-ascii {
+
+.hex-body { flex: 1; overflow: auto; font-size: 12px; }
+.hex-row { display: flex; align-items: center; padding: 1px 0; }
+.hex-row:hover { background: var(--et-bg-hover); }
+
+.hex-offset {
+  color: var(--et-fg-subtle);
+  padding: 0 10px;
+  user-select: none;
   white-space: pre;
-  line-height: 1.6;
 }
+.hex-pipe { color: var(--et-border); user-select: none; }
+.hex-bytes { padding: 0 8px; white-space: pre; }
 .hex-byte {
   display: inline-block;
   width: 24px;
   text-align: center;
-  color: #1a73e8;
+  color: var(--et-accent);
 }
-html.dark .hex-byte {
-  color: #7aa2f7;
+.hex-byte-gap { margin-right: 10px; }
+.hex-ascii { padding: 0 10px; color: var(--et-fg-muted); white-space: pre; }
+
+.hex-foot {
+  display: flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 8px;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--et-fg-subtle);
+  background: var(--et-bg-sunken);
+  border-top: 1px solid var(--et-border);
 }
 </style>

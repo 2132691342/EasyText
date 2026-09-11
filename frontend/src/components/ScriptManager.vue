@@ -16,7 +16,7 @@
         </ElTableColumn>
         <ElTableColumn prop="enabled" label="启用" width="60">
           <template #default="{ row }">
-            <ElSwitch v-model="row.enabled" size="small" @click.stop />
+            <ElSwitch v-model="row.enabled" size="small" @click.stop @change="persistEnabled(row)" />
           </template>
         </ElTableColumn>
       </ElTable>
@@ -152,6 +152,18 @@ async function runScript() {
   }
 }
 
+/** 列表里的「启用」开关此前只改本地对象，重启即复位；这里补上持久化 */
+async function persistEnabled(row: ScriptInfo | Record<string, any>) {
+  const info = row as ScriptInfo
+  try {
+    await SaveScriptApi(info as unknown as Parameters<typeof SaveScriptApi>[0])
+    ElMessage.success(info.enabled ? '已启用该脚本' : '已停用该脚本')
+  } catch (err: any) {
+    info.enabled = !info.enabled // 回滚 UI，避免显示与磁盘不一致
+    ElMessage.error('保存启用状态失败: ' + (err?.message || String(err)))
+  }
+}
+
 async function deleteScript() {
   if (!editingScript.value) return
   try {
@@ -160,7 +172,11 @@ async function deleteScript() {
     scripts.value = scripts.value.filter(s => s.id !== editingScript.value!.id)
     editingScript.value = null
     ElMessage.success('脚本已删除')
-  } catch (e) { console.warn(e) }
+  } catch (e: any) {
+    // ElMessageBox 的取消也会进 catch，需要区分用户取消与真实失败
+    if (e === 'cancel' || e === 'close') return
+    ElMessage.error('删除脚本失败: ' + (e?.message || String(e)))
+  }
 }
 
 onMounted(loadScripts)

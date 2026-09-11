@@ -2,7 +2,7 @@ package api
 
 import (
 	"easy-text/backend/tools"
-	"easy-text/internal/fileassoc"
+	"easy-text/backend/fileassoc"
 )
 
 // =============================================================================

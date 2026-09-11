@@ -11,7 +11,7 @@ import (
 	"sync"
 
 	"easy-text/backend/utils"
-	"easy-text/internal/concurrency"
+	"easy-text/backend/concurrency"
 )
 
 // FindMatch 匹配结果

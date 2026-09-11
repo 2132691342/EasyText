@@ -2,18 +2,8 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { OpenFileDialog, SaveFileDialog, ReadFile, SaveFile, ReadFileBytes, ConvertToUTF8, RenameFile } from '../../wailsjs/go/main/App'
 import { getFileExtension } from '@/utils'
 import { useFormatConverterStore } from '@/stores'
-
-/**
- * 尚未接线到真实实现的命令（菜单里存在入口，但功能为占位）。
- * 命中时明确提示「暂未实现」，避免用户点击后毫无反应。
- */
-const NOT_IMPLEMENTED = new Set([
-  'new-window',          // 在新窗口中打开（Wails v2 单主窗口模型不支持）
-  'import-plugin', 'import-shortcut', 'export-shortcut',
-  'recent-cmp',
-  'toggle-indent-guide', // 缩进参考线暂未实现
-  'pre-hex-page', 'next-hex-page', 'goto-hex-page', // 十六进制翻页未接线
-])
+import { confirmDialog } from '@/utils/confirm'
+import { CMD_ALIAS, NOT_IMPLEMENTED } from '@/utils/commands'
 
 /**
  * 命令分发 composable
@@ -97,8 +87,9 @@ export function useCommands(deps: {
 
   const { ed, ss, fs } = deps
 
+  /** 统一的编辑器命令出口：先过别名表，再派发给 CodeEditor */
   function execEd(cmd: string, ...args: any[]) {
-    deps.execEd(cmd, ...args)
+    deps.execEd(CMD_ALIAS[cmd] ?? cmd, ...args)
   }
 
   function onMenuCmd(name: string, ...args: any[]) {
@@ -117,7 +108,24 @@ export function useCommands(deps: {
       'reload-file': deps.reloadFile,
       'save-workspace': deps.saveWorkspace,
       'open-workspace': deps.openWorkspace,
-      'exit': deps.saveSession,
+      // 退出：先处理未保存内容，再落会话，最后真正退出进程。
+      // 此前仅调用 saveSession，点了「退出」窗口毫无反应——典型的流程断链。
+      'exit': async () => {
+        const dirty = ed.dirtyTabs
+        if (dirty.length > 0) {
+          const ok = await confirmDialog({
+            title: '退出 EasyText',
+            message: `有 ${dirty.length} 个文件未保存。是否全部保存后退出？\n选择「取消」可返回继续编辑。`,
+            confirmText: '保存并退出',
+            cancelText: '取消',
+          })
+          if (!ok) return
+          await deps.saveAll()
+        }
+        deps.saveSession()
+        const { Quit } = await import('../../wailsjs/runtime/runtime')
+        Quit()
+      },
       'undo': () => execEd('undo'),
       'redo': () => execEd('redo'),
       'cut': () => execEd('cut'),
@@ -157,12 +165,31 @@ export function useCommands(deps: {
       'batch-convert': () => { deps.showEncodeConvert.value = true },
       'open-converter': () => { deps.showFormatConverter.value = true },
       'explorer': () => openExplorer(),
+      // 打印：WebView2 中 window.open 常被拦截（点了没反应），改用隐藏 iframe 打印，
+      // 打印完自动移除，不干扰主界面。
       'print': () => {
         const t = ed.activeTab
         if (!t) return
-        const w = window.open('', '_blank')!
-        w.document.write(`<pre>${t.content.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</pre>`)
-        w.print(); w.close()
+        const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        const iframe = document.createElement('iframe')
+        iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;'
+        document.body.appendChild(iframe)
+        const doc = iframe.contentDocument
+        if (!doc) {
+          iframe.remove()
+          ElMessage.error('打印失败：无法创建打印视图')
+          return
+        }
+        doc.open()
+        doc.write(
+          `<!doctype html><html><head><meta charset="utf-8"><title>${escape(t.name)}</title>` +
+          `<style>pre{font:12px/1.5 Consolas,Monaco,monospace;white-space:pre-wrap;word-break:break-all}</style>` +
+          `</head><body><pre>${escape(t.content)}</pre></body></html>`,
+        )
+        doc.close()
+        iframe.contentWindow?.focus()
+        iframe.contentWindow?.print()
+        setTimeout(() => iframe.remove(), 1000)
       },
       'fullscreen': async () => {
         // WebView2 里 document.requestFullscreen 无效，走 Wails 原生全屏 API
@@ -288,7 +315,7 @@ export function useCommands(deps: {
       'manage-fav': deps.manageFavorites,
       'fav-empty': () => ElMessage.info('收藏夹为空'),
       'copy-line': () => execEd('line-dup'),
-      'cut-line': () => execEd('line-del'),
+      'cut-line': () => execEd('line-cut'),
       'clear-all-marks': () => execEd('clear-all-marks'),
       // 🆕 V2.0.0
       'regex-tester': () => { deps.showRegexTester.value = true },

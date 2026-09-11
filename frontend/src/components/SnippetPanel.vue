@@ -53,8 +53,17 @@ async function loadSnippets() {
     const result = await GetSnippets('')
     editorStore.snippets = result || []
   } catch (e) {
+    // 此前只写 console，界面上和「暂无片段」无法区分
     console.error('Failed to load snippets:', e)
+    ElMessage.error('加载代码片段失败')
   }
+}
+
+/** 打开新建表单：不能复用 resetForm()，因为它会把 showCreate 置回 false */
+function newSnippet() {
+  form.value = { name: '', prefix: '', body: '', description: '', language: '' }
+  editingId.value = null
+  showCreate.value = true
 }
 
 function resetForm() {
@@ -124,7 +133,7 @@ onMounted(() => {
       <button
         class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-blue-500"
         title="新建片段"
-        @click="showCreate = true; editingId = null; resetForm()"
+        @click="newSnippet"
       >
         <Plus class="w-3.5 h-3.5" />
       </button>

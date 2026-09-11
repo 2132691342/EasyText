@@ -102,6 +102,17 @@ function processExtend(p: string): string {
     .replace(/\\x([0-9a-fA-F]{2})/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
 }
 
+/** 由字符偏移换算出行号与整行文本 */
+function lineOfText(content: string, idx: number): { line: number; text: string } {
+  const lines = content.split('\n')
+  let cc = 0
+  for (let i = 0; i < lines.length; i++) {
+    if (idx >= cc && idx <= cc + lines[i].length) return { line: i + 1, text: lines[i] }
+    cc += lines[i].length + 1
+  }
+  return { line: lines.length, text: lines[lines.length - 1] || '' }
+}
+
 function buildRegex(pattern: string, mode: string, cs: boolean, whole: boolean): RegExp | null {
   let p = pattern
   if (mode === 'extend') { p = processExtend(p); p = p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
@@ -129,22 +140,36 @@ function doFind() {
   dispatchEd('set-search-term', fText.value)
 }
 
+/**
+ * 移动匹配游标。
+ * 「循环查找」此前声明了复选框却从未参与计算（恒为回绕），这里按开关生效：
+ * 关闭时走到边界即停并给出提示，与 notepad-- 的行为一致。
+ */
+function step(delta: number) {
+  const n = fResults.value.length
+  if (n === 0) return false
+  let i = fIndex.value + delta
+  if (i >= n) {
+    if (!fWrap.value) { fStatus.value = '已到文档末尾'; return false }
+    i = 0
+  } else if (i < 0) {
+    if (!fWrap.value) { fStatus.value = '已到文档开头'; return false }
+    i = n - 1
+  }
+  fIndex.value = i
+  dispatchEd('scroll-to-pos', fResults.value[i])
+  fStatus.value = `位置 ${i + 1}/${n}`
+  return true
+}
+
 function findNext() {
   if (fResults.value.length === 0) { doFind(); return }
-  fIndex.value = fBack.value
-    ? (fIndex.value - 1 + fResults.value.length) % fResults.value.length
-    : (fIndex.value + 1) % fResults.value.length
-  dispatchEd('scroll-to-pos', fResults.value[fIndex.value])
-  fStatus.value = `位置 ${fIndex.value + 1}/${fResults.value.length}`
+  step(fBack.value ? -1 : 1)
 }
 
 function findPrev() {
-  if (fResults.value.length === 0) return
-  fIndex.value = fBack.value
-    ? (fIndex.value + 1) % fResults.value.length
-    : (fIndex.value - 1 + fResults.value.length) % fResults.value.length
-  dispatchEd('scroll-to-pos', fResults.value[fIndex.value])
-  fStatus.value = `位置 ${fIndex.value + 1}/${fResults.value.length}`
+  if (fResults.value.length === 0) { doFind(); return }
+  step(fBack.value ? 1 : -1)
 }
 
 function countMatches() { doFind(); fStatus.value = `共 ${fResults.value.length} 处匹配` }
@@ -157,13 +182,22 @@ function findAllCurrent() {
 }
 
 function findAllOpen() {
-  let total = 0
+  if (!fText.value) { fStatus.value = '请输入查找内容'; return }
+  const all: { file: string; line: number; content: string }[] = []
   for (const t of ed.tabs) {
     if (t.viewType !== 'code') continue
     const r = buildRegex(fText.value, fMode.value, fCase.value, fWhole.value)
-    if (r) { let m; while ((m = r.exec(t.content)) !== null) { total++; if (m.index === r.lastIndex) r.lastIndex++ } }
+    if (!r) continue
+    let m
+    while ((m = r.exec(t.content)) !== null) {
+      const { line, text } = lineOfText(t.content, m.index)
+      all.push({ file: t.path || t.name, line, content: text.trim().substring(0, 200) })
+      if (m.index === r.lastIndex) r.lastIndex++
+    }
   }
-  fStatus.value = `所有打开文档共 ${total} 处匹配`
+  // 结果写入底部「查找结果」面板，可点击跳转；此前只显示一个总数，用户看不到命中在哪
+  sendFindResults(`所有打开文档: "${fText.value}"`, undefined, undefined, all)
+  fStatus.value = `所有打开文档共 ${all.length} 处匹配`
 }
 
 function copyFindResults() {
@@ -451,7 +485,7 @@ watch(() => props.visible, async (v) => {
               <div class="find-row">
                 <label class="w-20 text-right text-xs">查找目标:</label>
                 <input ref="fInput" v-model="fText" class="find-input flex-1" @keydown.enter.prevent="findNext" />
-                <span class="text-xs text-gray-400 w-20 text-right">{{ fResults.length ? `${fIndex+1}/${fResults.length}` : '0/0' }}</span>
+                <span class="text-xs w-20 text-right text-[color:var(--et-fg-subtle)]">{{ fResults.length ? `${fIndex+1}/${fResults.length}` : '0/0' }}</span>
               </div>
               <div class="find-checks ml-20">
                 <label class="check"><input type="checkbox" v-model="fBack" /> 向后查找</label>
@@ -547,7 +581,7 @@ watch(() => props.visible, async (v) => {
                 </fieldset>
                 <fieldset class="find-mode flex-1">
                   <legend>自动过滤</legend>
-                  <span class="text-[11px] text-gray-400 leading-5">隐藏目录、.git、node_modules、二进制文件已自动跳过</span>
+                  <span class="text-[11px] leading-5 text-[color:var(--et-fg-subtle)]">隐藏目录、.git、node_modules、二进制文件已自动跳过</span>
                 </fieldset>
               </div>
             </div>
@@ -633,72 +667,79 @@ watch(() => props.visible, async (v) => {
 </template>
 
 <style scoped>
+/* 全部改用设计令牌：此前整块硬编码 #fff/#ddd/#333 并用 html.dark 覆盖，
+   与其余界面的语义变量脱节，切换主题时弹窗风格明显不一致。 */
 .find-win-overlay {
   position: fixed; inset: 0; z-index: 9999; display: flex; align-items: flex-start; justify-content: center;
-  padding-top: 80px; background: rgba(0,0,0,0.15);
+  padding-top: 80px; background: rgba(0, 0, 0, .25);
 }
 .find-win {
-  width: 720px; max-height: 500px; background: #fff; border: 1px solid #d1d5db;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.2); border-radius: 6px; display: flex; flex-direction: column;
-  font-size: 12px;
+  width: 720px; max-height: 500px;
+  background: var(--et-bg-elevated); border: 1px solid var(--et-border);
+  box-shadow: var(--et-shadow-md); border-radius: var(--et-radius);
+  display: flex; flex-direction: column; font-size: 12px; color: var(--et-fg);
 }
-html.dark .find-win { background: #2d2d2d; border-color: #454545; }
 
 .find-win-titlebar {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 4px 10px; background: #f5f5f5; border-bottom: 1px solid #ddd; border-radius: 6px 6px 0 0;
-  color: #333; user-select: none;
+  padding: 6px 10px; background: var(--et-bg-sunken);
+  border-bottom: 1px solid var(--et-border); border-radius: var(--et-radius) var(--et-radius) 0 0;
+  color: var(--et-fg); user-select: none;
+  /* Wails 拖拽：标题栏按住可拖动窗口（notepad-- 同款交互） */
+  --wails-draggable: drag;
 }
-html.dark .find-win-titlebar { background: #3c3c3c; border-color: #555; color: #ddd; }
-.find-win-close { padding: 2px 6px; border: none; background: none; cursor: pointer; font-size: 14px; color: #666; border-radius: 3px; }
-.find-win-close:hover { background: #e0e0e0; color: #333; }
-html.dark .find-win-close:hover { background: #555; color: #fff; }
+.find-win-titlebar .find-win-close { --wails-draggable: no-drag; }
+.find-win-close {
+  padding: 2px 6px; border: none; background: none; cursor: pointer;
+  font-size: 13px; color: var(--et-fg-muted); border-radius: var(--et-radius-sm);
+}
+.find-win-close:hover { background: var(--et-bg-hover); color: var(--et-fg); }
 
-.find-win-tabs { display: flex; border-bottom: 1px solid #ddd; background: #f0f0f0; }
-html.dark .find-win-tabs { border-color: #555; background: #353535; }
+.find-win-tabs { display: flex; border-bottom: 1px solid var(--et-border); background: var(--et-bg-sunken); }
 .find-tab {
-  padding: 5px 16px; border: none; background: none; cursor: pointer; font-size: 12px;
-  color: #555; border-right: 1px solid #ddd;
+  padding: 6px 16px; border: none; background: none; cursor: pointer; font-size: 12px;
+  color: var(--et-fg-muted); border-right: 1px solid var(--et-border);
+  transition: background .12s ease, color .12s ease;
 }
-html.dark .find-tab { color: #aaa; border-color: #555; }
-.find-tab.active { background: #fff; color: #1a73e8; font-weight: 500; }
-html.dark .find-tab.active { background: #1e1e1e; color: #60a5fa; }
+.find-tab:hover { background: var(--et-bg-hover); color: var(--et-fg); }
+.find-tab.active { background: var(--et-bg-elevated); color: var(--et-accent); font-weight: 500; }
 
 .find-win-body { padding: 10px; overflow-y: auto; flex: 1; }
 .find-form-row { display: flex; gap: 10px; }
 .find-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
 .find-checks { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-bottom: 6px; }
-.find-mode { border: 1px solid #d1d5db; border-radius: 4px; padding: 4px 8px; display: flex; gap: 8px; flex-wrap: wrap; }
-html.dark .find-mode { border-color: #555; }
-.find-mode legend { font-size: 11px; color: #888; padding: 0 2px; }
+.find-mode {
+  border: 1px solid var(--et-border); border-radius: var(--et-radius-sm);
+  padding: 4px 8px; display: flex; gap: 8px; flex-wrap: wrap;
+}
+.find-mode legend { font-size: 11px; color: var(--et-fg-subtle); padding: 0 2px; }
 
-.check { display: flex; align-items: center; gap: 2px; font-size: 12px; color: #555; cursor: pointer; }
-html.dark .check { color: #aaa; }
+.check { display: flex; align-items: center; gap: 3px; font-size: 12px; color: var(--et-fg-muted); cursor: pointer; }
 .check input[type="checkbox"], .check input[type="radio"] { width: 13px; height: 13px; margin: 0; cursor: pointer; }
 
 .find-input {
-  padding: 3px 6px; border: 1px solid #ccc; border-radius: 3px; font-size: 12px;
-  background: #fff; color: #333; outline: none;
+  padding: 4px 6px; border: 1px solid var(--et-border); border-radius: var(--et-radius-sm);
+  font-size: 12px; background: var(--et-bg); color: var(--et-fg); outline: none;
+  transition: border-color .12s ease;
 }
-.find-input:focus { border-color: #3b82f6; }
-html.dark .find-input { background: #1e1e1e; color: #d4d4d4; border-color: #555; }
-.find-input:disabled { opacity: 0.4; }
+.find-input:focus { border-color: var(--et-accent); }
+.find-input:disabled { opacity: .4; }
+.find-input::placeholder { color: var(--et-fg-subtle); }
 
 .find-btns { display: flex; flex-direction: column; gap: 4px; width: 140px; flex-shrink: 0; }
 .btn {
-  padding: 5px 8px; border: 1px solid #ccc; border-radius: 3px; background: #fff;
-  font-size: 12px; cursor: pointer; color: #333; text-align: center;
+  padding: 5px 8px; border: 1px solid var(--et-border); border-radius: var(--et-radius-sm);
+  background: var(--et-bg); font-size: 12px; cursor: pointer; color: var(--et-fg); text-align: center;
+  transition: background .12s ease, border-color .12s ease;
 }
-.btn:hover { background: #f0f0f0; }
-.btn:disabled { opacity: 0.4; cursor: default; }
-.btn.primary { background: #3b82f6; color: #fff; border-color: #3b82f6; }
-.btn.primary:hover { background: #2563eb; }
-html.dark .btn { background: #3c3c3c; color: #d4d4d4; border-color: #555; }
-html.dark .btn:hover { background: #4c4c4c; }
+.btn:hover { background: var(--et-bg-hover); }
+.btn:disabled { opacity: .4; cursor: default; }
+.btn.primary { background: var(--et-accent); color: var(--et-accent-contrast); border-color: var(--et-accent); }
+.btn.primary:hover { filter: brightness(1.06); }
 
 .find-win-status {
-  padding: 3px 10px; border-top: 1px solid #ddd; font-size: 11px; color: #888;
-  background: #f5f5f5; border-radius: 0 0 6px 6px;
+  padding: 4px 10px; border-top: 1px solid var(--et-border); font-size: 11px;
+  color: var(--et-fg-subtle); background: var(--et-bg-sunken);
+  border-radius: 0 0 var(--et-radius) var(--et-radius);
 }
-html.dark .find-win-status { background: #252526; border-color: #555; color: #aaa; }
 </style>

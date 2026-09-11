@@ -147,33 +147,19 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="h-full flex flex-col bg-white dark:bg-[#252526]">
+  <div class="h-full flex flex-col bg-[var(--et-bg-sunken)]">
     <!-- Header -->
-    <div class="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-gray-700">
-      <span class="text-sm font-medium text-gray-700 dark:text-gray-200">
-        资源管理器
-      </span>
+    <div class="sb-header">
+      <span class="sb-title">资源管理器</span>
       <!-- Action buttons when directory is open -->
       <div v-if="fileStore.hasDirectory" class="flex items-center gap-1">
-        <button
-          class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-          title="新建文件"
-          @click="startRootNewFile"
-        >
+        <button class="sb-btn" title="新建文件" @click="startRootNewFile">
           <FilePlus class="w-4 h-4" />
         </button>
-        <button
-          class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-          title="新建文件夹"
-          @click="startRootNewFolder"
-        >
+        <button class="sb-btn" title="新建文件夹" @click="startRootNewFolder">
           <FolderPlus class="w-4 h-4" />
         </button>
-        <button
-          class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-          title="刷新"
-          @click="refreshTree"
-        >
+        <button class="sb-btn" title="刷新" @click="refreshTree">
           <RefreshCw class="w-4 h-4" />
         </button>
       </div>
@@ -211,9 +197,9 @@ onUnmounted(() => {
 
       <!-- Empty state when no folder is open -->
       <div v-if="!fileStore.hasDirectory" class="flex flex-col items-center justify-center py-10 px-4 text-center">
-        <FolderOpen class="w-10 h-10 mb-3 text-gray-300 dark:text-gray-600" />
-        <p class="text-sm text-gray-400">尚未打开文件夹</p>
-        <p class="text-xs mt-1 text-gray-400">点击工具栏“打开文件夹”以浏览文件</p>
+        <FolderOpen class="w-10 h-10 mb-3 text-[color:var(--et-fg-subtle)]" />
+        <p class="text-sm text-[color:var(--et-fg-muted)]">尚未打开文件夹</p>
+        <p class="text-xs mt-1 text-[color:var(--et-fg-subtle)]">菜单「文件 → 打开目录」或资源管理器空白处右键新建</p>
       </div>
     </div>
 
@@ -244,21 +230,29 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.sb-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 10px; border-bottom: 1px solid var(--et-border);
+  flex-shrink: 0;
+}
+.sb-title { font-size: 13px; font-weight: 500; color: var(--et-fg); }
+.sb-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 3px; border: none; border-radius: var(--et-radius-sm);
+  background: transparent; color: var(--et-fg-subtle); cursor: pointer;
+  transition: background .12s ease, color .12s ease;
+}
+.sb-btn:hover { background: var(--et-bg-hover); color: var(--et-fg); }
+
 .rename-input {
   width: 100%;
   padding: 1px 4px;
   font-size: 13px;
   line-height: 1.4;
-  border: 1px solid #3b82f6;
-  border-radius: 3px;
+  border: 1px solid var(--et-accent);
+  border-radius: var(--et-radius-sm);
   outline: none;
-  background: white;
-  color: #333;
-}
-
-html.dark .rename-input {
-  background: #3c3c3c;
-  color: #e0e0e0;
-  border-color: #60a5fa;
+  background: var(--et-bg);
+  color: var(--et-fg);
 }
 </style>

@@ -46,6 +46,7 @@ async function loadBookmarks() {
     allBookmarks.value = list
   } catch (e) {
     console.error('Failed to load bookmarks:', e)
+    ElMessage.error('加载书签失败')
   }
 }
 
