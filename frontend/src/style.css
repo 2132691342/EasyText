@@ -6,8 +6,11 @@
    设计令牌（Design Tokens）
    此前各组件各自硬编码色值（菜单 #f0f0f0、标签 #e8e8e8、状态栏深色 #007acc…），
    导致深浅色下界面割裂。统一为语义化变量，组件只引用变量不再写字面色值。
+   v2.1 重塑：在原有颜色令牌基础上补齐尺寸 / 间距 / 字号 / 字重 / 语义色，
+   Chrome 五层（菜单 28 / 工具栏 30 / 标签 30 / 状态 24）由此派生。
    ============================================================ */
 :root {
+  /* —— 颜色 —— */
   --et-bg: #ffffff;            /* 编辑区主背景 */
   --et-bg-sunken: #f7f8fa;     /* 框架区：菜单/工具/标签/状态栏 */
   --et-bg-elevated: #ffffff;   /* 浮层：下拉菜单、弹窗 */
@@ -22,13 +25,55 @@
   --et-accent-contrast: #ffffff;
   --et-shadow-sm: 0 1px 2px rgba(0, 0, 0, .06);
   --et-shadow-md: 0 6px 20px rgba(0, 0, 0, .12), 0 2px 6px rgba(0, 0, 0, .06);
+
+  /* —— 圆角 —— */
   --et-radius: 6px;
   --et-radius-sm: 4px;
-  /* 框架各条高度 */
-  --et-h-menu: 32px;
-  --et-h-toolbar: 38px;
-  --et-h-tab: 36px;
-  --et-h-status: 26px;
+
+  /* —— Chrome 高度（v2.1 重塑后阶梯：28 / 30 / 30 / 24） —— */
+  --et-h-menu: 28px;
+  --et-h-toolbar: 30px;
+  --et-h-tab: 30px;
+  --et-h-status: 24px;
+  --et-h-sidebar-header: 28px;
+  --et-h-icon-btn: 26px;       /* 工具栏 / 侧栏 header 按钮固定尺寸 */
+
+  /* —— 控件高度 —— */
+  --et-h-control-sm: 22px;
+  --et-h-control: 28px;
+  --et-h-control-lg: 32px;
+
+  /* —— 间距阶梯 —— */
+  --et-space-1: 4px;
+  --et-space-2: 8px;
+  --et-space-3: 12px;
+  --et-space-4: 16px;
+  --et-space-5: 24px;
+
+  /* —— 字号阶梯 —— */
+  --et-text-xs: 11px;
+  --et-text-sm: 12px;
+  --et-text-md: 13px;          /* 新基线（菜单 / 面板头） */
+  --et-text-base: 13px;        /* body 与编辑器默认，等价 md */
+  --et-text-lg: 16px;
+
+  /* —— 字重 —— */
+  --et-fw-regular: 400;
+  --et-fw-medium: 500;
+  --et-fw-semibold: 600;
+
+  /* —— 语义色（不再用 Tailwind red/yellow/green 字面值） —— */
+  --et-danger: #ef4444;
+  --et-warn: #f59e0b;
+  --et-success: #22c55e;
+  --et-info: #3b82f6;
+  --et-danger-bg: rgba(239, 68, 68, .10);
+  --et-warn-bg: rgba(245, 158, 11, .10);
+  --et-success-bg: rgba(34, 197, 94, .10);
+
+  /* —— 行高 —— */
+  --et-lh-tight: 1.2;
+  --et-lh-base: 1.5;
 }
 
 html.dark {
@@ -46,6 +91,13 @@ html.dark {
   --et-accent-contrast: #0b1220;
   --et-shadow-sm: 0 1px 2px rgba(0, 0, 0, .4);
   --et-shadow-md: 0 8px 24px rgba(0, 0, 0, .55), 0 2px 6px rgba(0, 0, 0, .35);
+  --et-danger: #f87171;
+  --et-warn: #fbbf24;
+  --et-success: #4ade80;
+  --et-info: #60a5fa;
+  --et-danger-bg: rgba(248, 113, 113, .14);
+  --et-warn-bg: rgba(251, 191, 36, .14);
+  --et-success-bg: rgba(74, 222, 128, .14);
 }
 
 /* Base styles */
@@ -60,8 +112,9 @@ body {
      缺失时中文会回退到点阵感很强的宋体，是界面「显得丑」的主因之一 */
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei UI', 'Microsoft YaHei',
     'PingFang SC', 'Hiragino Sans GB', Roboto, Oxygen, Ubuntu, Cantarell, 'Helvetica Neue', sans-serif;
-  font-size: 14px;
-  line-height: 1.5;
+  /* v2.1：基线字号 14 → 13px，与 Sublime / notepad-- 一致 */
+  font-size: var(--et-text-base);
+  line-height: var(--et-lh-base);
   color: var(--et-fg);
   background-color: var(--et-bg);
   overflow: hidden;
@@ -90,7 +143,7 @@ html.dark body {
   height: 100%;
   width: 100%;
   min-height: 100px;
-  font-size: var(--editor-font-size, 14px);
+  font-size: var(--editor-font-size, 13px);
   font-family: var(--editor-font-family, 'Consolas', 'Monaco', 'Courier New', monospace);
   /* WebView2 fix: -webkit-user-drag: element 会破坏文本选择 */
   -webkit-user-drag: none;
@@ -395,6 +448,163 @@ html.dark select:focus {
   margin: 4px 6px;
   background-color: var(--et-border);
 }
+
+/* ============================================================
+   v2.1 — Chrome 五层基线 + 可复用 utility
+   ------------------------------------------------------------
+   这里只放「跨 chrome 共享」的视觉契约，避免每个组件重复实现：
+   - .et-chrome-row    ：菜单/工具/标签/状态栏通用 row 容器
+   - .et-icon-btn      ：Sublime 风方形图标按钮（26×26）
+   - .et-icon-btn-sm   ：22×22 小号（侧栏 header 用）
+   - .et-popover       ：即时 Popover（替代 native title 延迟）
+   - .et-dot-warn      ：TabBar / StatusBar 统一的"已修改"圆点
+   - .et-empty         ：PanelEmptyState 默认样式
+   高度值由 --et-h-* 派生，修改令牌即可全局生效。
+   ============================================================ */
+.et-chrome-row {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  background-color: var(--et-bg-sunken);
+  color: var(--et-fg);
+  border-color: var(--et-border);
+  font-size: var(--et-text-md);
+  line-height: var(--et-lh-tight);
+}
+.et-chrome-menu  { height: var(--et-h-menu); border-bottom: 1px solid var(--et-border); }
+.et-chrome-tool  { height: var(--et-h-toolbar); border-bottom: 1px solid var(--et-border); }
+.et-chrome-tab   { height: var(--et-h-tab); border-bottom: 1px solid var(--et-border); }
+.et-chrome-status{ height: var(--et-h-status); border-top: 1px solid var(--et-border); }
+.et-chrome-sbh   { height: var(--et-h-sidebar-header); border-bottom: 1px solid var(--et-border); }
+
+/* 方形图标按钮（26×26）—— 工具栏主用 */
+.et-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--et-h-icon-btn);
+  height: var(--et-h-icon-btn);
+  padding: 0;
+  margin: 0 1px;
+  background: transparent;
+  color: var(--et-fg-muted);
+  border: 0;
+  border-radius: var(--et-radius-sm);
+  cursor: pointer;
+  transition: background-color 80ms ease, color 80ms ease;
+  position: relative;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.et-icon-btn:hover:not(:disabled) {
+  background-color: var(--et-bg-hover);
+  color: var(--et-fg);
+}
+.et-icon-btn:active:not(:disabled) {
+  background-color: var(--et-bg-active);
+}
+.et-icon-btn:disabled {
+  opacity: .35;
+  cursor: not-allowed;
+}
+.et-icon-btn.is-on {
+  background-color: var(--et-accent-soft);
+  color: var(--et-accent);
+}
+.et-icon-btn.is-on::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 2px;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: currentColor;
+}
+
+/* 22×22 紧凑版（侧栏 header / 状态栏 / 菜单项用） */
+.et-icon-btn-sm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--et-h-control-sm);
+  height: var(--et-h-control-sm);
+  padding: 0;
+  background: transparent;
+  color: var(--et-fg-muted);
+  border: 0;
+  border-radius: var(--et-radius-sm);
+  cursor: pointer;
+  transition: background-color 80ms ease, color 80ms ease;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.et-icon-btn-sm:hover:not(:disabled) {
+  background-color: var(--et-bg-hover);
+  color: var(--et-fg);
+}
+.et-icon-btn-sm:disabled { opacity: .35; cursor: not-allowed; }
+
+/* 即时 Popover（替代 native title 延迟） */
+.et-popover {
+  position: absolute;
+  z-index: 1200;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--et-space-2);
+  padding: 4px 8px;
+  background-color: var(--et-bg-elevated);
+  color: var(--et-fg);
+  border: 1px solid var(--et-border);
+  border-radius: var(--et-radius-sm);
+  box-shadow: var(--et-shadow-sm);
+  font-size: var(--et-text-sm);
+  line-height: var(--et-lh-tight);
+  white-space: nowrap;
+  pointer-events: none;
+  animation: et-popover-in 80ms ease-out;
+}
+.et-popover .et-popover-key {
+  color: var(--et-fg-subtle);
+  font-size: var(--et-text-xs);
+  border-left: 1px solid var(--et-border);
+  padding-left: var(--et-space-2);
+}
+@keyframes et-popover-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* 统一的"已修改"圆点（TabBar / StatusBar 共用） */
+.et-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--et-fg-subtle);
+  flex-shrink: 0;
+}
+.et-dot-warn   { background-color: var(--et-warn); }
+.et-dot-success{ background-color: var(--et-success); }
+.et-dot-danger { background-color: var(--et-danger); }
+
+/* 侧栏面板空状态 */
+.et-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--et-space-5) var(--et-space-3);
+  color: var(--et-fg-subtle);
+  font-size: var(--et-text-sm);
+  text-align: center;
+  gap: var(--et-space-2);
+  user-select: none;
+}
+.et-empty-icon { color: var(--et-fg-subtle); opacity: .7; }
+.et-empty-title { font-size: var(--et-text-md); color: var(--et-fg-muted); font-weight: var(--et-fw-medium); }
+.et-empty-hint  { font-size: var(--et-text-xs); color: var(--et-fg-subtle); }
 
 /* --- Element Plus dark mode overrides --- */
 html.dark {

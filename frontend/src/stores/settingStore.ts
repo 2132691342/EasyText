@@ -213,6 +213,17 @@ export const useSettingStore = defineStore('setting', () => {
     }, 300) // 拖拽停顿 300ms 后才落盘
   }
 
+  // v2.1：侧栏整体宽度记忆（与 setFileTreeWidth 同模式）
+  let sidebarWidthTimer: ReturnType<typeof setTimeout> | null = null
+  function setSidebarWidth(width: number) {
+    config.value.ui.fileTreeWidth = width
+    if (sidebarWidthTimer) clearTimeout(sidebarWidthTimer)
+    sidebarWidthTimer = setTimeout(() => {
+      saveConfig()
+      sidebarWidthTimer = null
+    }, 300)
+  }
+
   function setLanguage(lang: string) {
     config.value.ui.language = lang
     saveConfig()
@@ -418,7 +429,7 @@ export const useSettingStore = defineStore('setting', () => {
     shortcuts, isEditingShortcut, editingShortcutId,
     setConfig, updateTheme, toggleTheme, applyTheme,
     toggleFileTree, toggleStatusBar, toggleToolBar, toggleFileListView,
-    setFileTreeWidth, setLanguage,
+    setFileTreeWidth, setSidebarWidth, setLanguage,
     setEditorFontSize, setEditorFontFamily, setTabSize, setAutoSave,
     saveConfig,
     getShortcut, updateShortcut, resetShortcuts, matchShortcut,

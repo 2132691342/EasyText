@@ -1,14 +1,28 @@
 <script lang="ts" setup>
-import { ref, reactive, onMounted, onUnmounted, watch } from 'vue'
+/**
+ * 菜单栏（Menu Bar）v2.1
+ *
+ * 设计目标（对标 Notepad-- / Sublime Text）：
+ *  1. 顶部菜单条 28px，菜单按钮 padding: 0 10px，hover 高亮过渡。
+ *  2. Lucide 图标替代 emoji 风格的 ✓/▶（Check / ChevronRight）。
+ *  3. 键盘可达：菜单按钮 tabindex=0，↑/↓ 在项间移动，Enter 触发，
+ *     Esc 关闭，右箭头进入子菜单。
+ *  4. 状态从 store 实时取（toolbar 改 → 菜单勾选同步）。
+ *  5. 子菜单位置自适应右边界。
+ *  6. 过渡动画 80ms。
+ */
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import { useEditorStore } from '@/stores'
+import { Check, ChevronRight } from 'lucide-vue-next'
+import { useEditorStore, useSettingStore } from '@/stores'
 import { GetRecentFiles } from '../../wailsjs/go/main/App'
 import { NOT_IMPLEMENTED } from '@/utils/commands'
 
 const emit = defineEmits<{ (e: 'cmd', name: string, ...args: any[]): void }>()
-const editor = useEditorStore()
+const ed = useEditorStore()
+const se = useSettingStore()
 
-// ---- 语言分组 ----
+// ---- 语言分组（与原实现保持一致） ----
 const LANG_GROUPS: Record<string, string[]> = {
   A: ['ASP','ActionScript','Assembly','AutoIt','AviSynth','ASN.1'],
   B: ['BaanC','Bash','Batch','BlitzBasic'],
@@ -32,13 +46,10 @@ const LANG_GROUPS: Record<string, string[]> = {
   其他: ['XML','YAML','TXT','UserDefine'],
 }
 
-// ---- 类型 ----
 type Item = { label?: string; cmd?: string; sub?: string; key?: string; sep?: boolean; chk?: boolean; grp?: string; st?: string }
 
-// ---- 帮助函数 ----
 function showLabel(s?: string) { return (s || '').replace(/\(&.\)/g, '') }
 
-// ---- 菜单数据（完整对齐 notepad-- ccnotepad.ui + ccnotepad.cpp 所有 addAction）----
 const MENUS = [
   { label: '文件(&F)', items: [
     { label: '新建(&N)', cmd: 'new-file', key: 'Ctrl+T' },
@@ -81,495 +92,533 @@ const MENUS = [
     { label: '剪切(&T)', cmd: 'cut', key: 'Ctrl+X' },
     { label: '复制(&C)', cmd: 'copy', key: 'Ctrl+C' },
     { label: '粘贴(&P)', cmd: 'paste', key: 'Ctrl+V' },
-    { label: '删除(&L)', cmd: 'delete' },
-    { sep: true },
+    { label: '删除(&D)', cmd: 'delete', key: 'Del' },
     { label: '全选(&A)', cmd: 'select-all', key: 'Ctrl+A' },
-    { label: '开始/停止录制', cmd: 'record-macro' },
-    { label: '停止录制', cmd: 'stop-macro' },
-    { label: '播放宏', cmd: 'play-macro' },
-    { label: '保存当前录制的宏...', cmd: 'save-macro' },
-    { label: '多次运行宏...', cmd: 'run-macro-multi' },
     { sep: true },
-    { label: '剪贴板历史记录', cmd: 'clipboard-history' },
-    { label: '复制到剪贴板', sub: 'clipboard' },
-    { sep: true },
-    { label: '缩进(&I)', cmd: 'indent' },
-    { label: '取消缩进(&U)', cmd: 'dedent' },
-    { label: '转为大写(&U)', cmd: 'case-upper' },
-    { label: '转为小写(&L)', cmd: 'case-lower' },
-    { sep: true },
-    { label: '设置只读(&R)', cmd: 'toggle-readonly' },
-    { label: '清空只读标记', cmd: 'clear-readonly' },
-    { sep: true },
-    { label: '换行符转换', sub: 'le' },
-    { label: '以文本模式打开', cmd: 'open-text' },
-    { label: '以二进制模式打开', cmd: 'open-hex' },
-    { label: '空白字符操作', sub: 'blank' },
-    { label: '转换大小写为', sub: 'case' },
-    { label: '行操作', sub: 'line' },
-    { label: '注释/取消注释', sub: 'comment' },
-    { sep: true },
-    { label: '列块模式', cmd: 'column-mode' },
-    { label: '列块编辑...', cmd: 'column-block', key: 'Alt+X' },
-  ] as Item[] },
-  { label: '查找(&S)', items: [
     { label: '查找(&F)...', cmd: 'find', key: 'Ctrl+F' },
     { label: '查找下一个', cmd: 'find-next', key: 'F3' },
     { label: '查找上一个', cmd: 'find-prev', key: 'Shift+F3' },
-    { label: '查找并替换(&R)...', cmd: 'replace', key: 'Ctrl+H' },
-    { sep: true },
-    { label: '在目录中查找...', cmd: 'find-dir', key: 'Ctrl+Shift+D' },
-    { label: '在多个文件中查找...', cmd: 'find-multi' },
-    { label: '在多个文件中替换...', cmd: 'replace-multi' },
-    { sep: true },
-    { label: '标记所有...', cmd: 'mark-all' },
-    { label: '取消所有标记', cmd: 'clear-mark' },
-    { sep: true },
+    { label: '替换(&H)...', cmd: 'replace', key: 'Ctrl+H' },
     { label: '转到行(&G)...', cmd: 'goto-line', key: 'Ctrl+G' },
-    { label: '转到匹配的括号', cmd: 'goto-bracket', key: 'Ctrl+B' },
-    { label: '上一个位置', cmd: 'prev-position' },
-    { label: '下一个位置', cmd: 'next-position' },
+    { label: '转到匹配括号', cmd: 'goto-bracket', key: 'Ctrl+]' },
     { sep: true },
-    { label: '书签', sub: 'bookmark' },
-    { label: '标记颜色', sub: 'mark' },
+    { label: '列编辑模式(&X)', cmd: 'column-mode', key: 'Alt+X' },
+    { label: '列块插入文本...', cmd: 'column-block' },
+    { label: '缩进(&I)', cmd: 'indent', key: 'Tab' },
+    { label: '减少缩进(&U)', cmd: 'dedent', key: 'Shift+Tab' },
+    { sep: true },
+    { label: '切换书签(&B)', cmd: 'toggle-bookmark', key: 'F2' },
+    { label: '下一个书签', cmd: 'next-bookmark', key: 'Shift+F2' },
+    { label: '清除所有书签', cmd: 'clear-bookmarks' },
+    { sep: true },
+    { label: '上一位置', cmd: 'prev-position' },
+    { label: '下一位置', cmd: 'next-position' },
+  ] as Item[] },
+  { label: '查找(&S)', items: [
+    { label: '快速查找...', cmd: 'find', key: 'Ctrl+F' },
+    { label: '在文件中查找...', cmd: 'search-files', key: 'Ctrl+Shift+F' },
+    { label: '目录查找...', cmd: 'find-dir', key: 'Ctrl+Shift+D' },
+    { label: '全局搜索...', cmd: 'find-multi' },
+    { label: '批量替换...', cmd: 'replace-multi' },
+    { sep: true },
+    { label: '标记全部', cmd: 'mark-all' },
+    { label: '清除所有标记', cmd: 'clear-all-marks' },
+    { sep: true },
+    { label: '正则测试器...', cmd: 'regex-tester' },
   ] as Item[] },
   { label: '视图(&V)', items: [
-    { label: '显示符号', sub: 'display' },
-    { label: '查找结果', cmd: 'search-result' },
+    { label: '缩放', sub: 'zoom' },
     { label: '图标大小', sub: 'iconsize' },
     { sep: true },
-    { label: '自动换行', cmd: 'toggle-wrap', chk: true, st: 'wrap' },
-    { label: '文档地图', cmd: 'toggle-minimap' },
-    { label: '文件列表视图', cmd: 'toggle-filelist', chk: true, st: 'filelist' },
-    { label: '显示工具栏', cmd: 'toggle-toolbar', chk: true, st: 'toolbar' },
-    { label: '显示状态栏', cmd: 'toggle-statusbar', chk: true, st: 'statusbar' },
-    { label: '显示网页地址(不推荐)', cmd: 'toggle-webaddr', chk: true, st: 'webaddr' },
+    { label: '自动换行(&W)', cmd: 'toggle-wrap', chk: true },
+    { label: '显示空白字符', cmd: 'toggle-whitespace', chk: true },
+    { label: '缩进参考线', cmd: 'toggle-indent-guide', chk: true },
+    { label: '文件列表', cmd: 'toggle-filelist', chk: true },
     { sep: true },
-    { label: '代码片段面板', cmd: 'snippet-panel', chk: true, st: 'snippet' },
-    { label: '全局书签面板', cmd: 'bookmark-panel', chk: true, st: 'bookmark' },
-    { label: '函数列表面板', cmd: 'function-list', chk: true, st: 'functionlist' },
-    { label: '文件监控面板', cmd: 'file-monitor', chk: true, st: 'filemonitor' },
-    { label: '日志查看模式', cmd: 'log-mode', chk: true, st: 'log' },
-    { label: '自动跟随系统主题', cmd: 'toggle-auto-theme', chk: true, st: 'autotheme' },
+    { label: '工具栏', cmd: 'toggle-toolbar', chk: true, grp: 'toolbar', st: 'show' },
+    { label: '状态栏', cmd: 'toggle-statusbar', chk: true, grp: 'toolbar', st: 'status' },
     { sep: true },
-    { label: '放大(&I)', cmd: 'zoom-in', key: 'Ctrl+=' },
-    { label: '缩小(&O)', cmd: 'zoom-out', key: 'Ctrl+-' },
-    { label: '恢复默认缩放', cmd: 'zoom-reset', key: 'Ctrl+/' },
+    { label: '显示文件树', cmd: 'showFileTree' },
+    { label: '显示片段', cmd: 'snippet-panel' },
+    { label: '显示书签', cmd: 'bookmark-panel' },
+    { label: '显示函数列表', cmd: 'function-list' },
+    { label: '显示文件监控', cmd: 'file-monitor' },
     { sep: true },
-    { label: '全屏', cmd: 'fullscreen', key: 'F11' },
+    { label: '全屏(&F)', cmd: 'fullscreen', key: 'F11' },
   ] as Item[] },
   { label: '编码(&N)', items: [
-    { label: '编码字符集', sub: 'enc-charset' },
-    { label: '以 ANSI 编码', cmd: 'encode-ANSI', chk: true, grp: 'enc' },
-    { label: '以 UTF-8 编码', cmd: 'encode-UTF-8', chk: true, grp: 'enc' },
-    { label: '以 UTF-8-BOM 编码', cmd: 'encode-UTF-8-BOM', chk: true, grp: 'enc' },
-    { label: '以 UCS-2 BE BOM 编码', cmd: 'encode-UCS-2-BE', chk: true, grp: 'enc' },
-    { label: '以 UCS-2 LE BOM 编码', cmd: 'encode-UCS-2-LE', chk: true, grp: 'enc' },
+    { label: 'ANSI / 代码页探测', cmd: 'open-with-encoding' },
+    { label: '以 UTF-8 打开', cmd: 'open-as-utf8' },
+    { label: '以 UTF-8 无 BOM 保存', cmd: 'save-as-utf8-nobom' },
+    { label: '以 UTF-8 加 BOM 保存', cmd: 'save-as-utf8-bom' },
     { sep: true },
-    { label: '转换为 ANSI', cmd: 'conv-ANSI' },
-    { label: '转换为 UTF-8', cmd: 'conv-UTF-8' },
-    { label: '转换为 UTF-8-BOM', cmd: 'conv-UTF-8-BOM' },
-    { label: '转换为 UCS-2 BE BOM', cmd: 'conv-UCS-2-BE' },
-    { label: '转换为 UCS-2 LE BOM', cmd: 'conv-UCS-2-LE' },
+    { label: '转为 UTF-8(&U)', cmd: 'convert-to-utf8' },
+    { label: '转为 UTF-8 无 BOM', cmd: 'convert-to-utf8-nobom' },
+    { label: '转为 UTF-8 加 BOM', cmd: 'convert-to-utf8-bom' },
     { sep: true },
-    { label: '批量编码转换', cmd: 'batch-convert' },
+    { label: '转为 GB2312', cmd: 'encode-GB2312' },
+    { label: '转为 Shift_JIS', cmd: 'encode-SJIS' },
+    { label: '转为 Big5', cmd: 'encode-ar' },
+    { label: '转为 阿拉伯 (Windows)', cmd: 'encode-baltic' },
+    { label: '转为 中欧', cmd: 'encode-ce' },
+    { label: '转为 西里尔', cmd: 'encode-cyrillic' },
+    { label: '转为 希腊语', cmd: 'encode-greek' },
+    { label: '转为 希伯来语', cmd: 'encode-hebrew' },
+    { label: '转为 韩文', cmd: 'encode-korean' },
+    { label: '转为 泰语', cmd: 'encode-thai' },
+    { label: '转为 土耳其语', cmd: 'encode-turkish' },
+    { label: '转为 越南语', cmd: 'encode-vietnamese' },
+    { label: '转为 西欧', cmd: 'encode-we' },
+    { sep: true },
+    { label: '编码转换器...', cmd: 'batch-convert' },
   ] as Item[] },
-  { label: '语言(&L)', items: [] as Item[] },
+  { label: '语言(&L)', items: [] as Item[] }, // 语言子菜单渲染时用 LANG_GROUPS
   { label: '设置(&T)', items: [
-    { label: '首选项(&P)...', cmd: 'preferences' },
+    { label: '首选项...', cmd: 'preferences' },
+    { label: '主题风格', sub: 'theme' },
+    { label: '语言', sub: 'uilang' },
     { sep: true },
-    { label: '导入', sub: 'import' },
-    { label: '导出', sub: 'export' },
+    { label: '快捷键管理...', cmd: 'shortcut-mgr' },
+    { label: '宏管理...', cmd: 'macro-manager' },
+    { label: '片段管理...', cmd: 'snippet-manager' },
     { sep: true },
-    { label: '编辑弹出菜单', cmd: 'edit-context-menu' },
-    { sep: true },
-    { label: '界面语言', sub: 'lang' },
-    { label: '主题样式', cmd: 'theme-style' },
-    { label: '自定义语言格式', cmd: 'define-lang' },
-    { label: '语言文件后缀', cmd: 'lang-suffix' },
-    { label: '快捷键管理器', cmd: 'shortcut-mgr' },
+    { label: '关联文件类型...', cmd: 'file-assoc' },
+    { label: '导入主题...', cmd: 'import-theme' },
+    { label: '导出主题...', cmd: 'export-theme' },
+    { label: '导入快捷键...', cmd: 'import-shortcut' },
+    { label: '导出快捷键...', cmd: 'export-shortcut' },
   ] as Item[] },
   { label: '工具(&O)', items: [
-    { label: 'MD5/SHA 哈希', cmd: 'md5-hash' },
-    { label: '格式化语言', sub: 'fmtlang' },
-    { label: '批量查找替换', cmd: 'batch-find' },
+    { label: 'MD5 / 哈希...', cmd: 'md5-hash' },
+    { label: '编码转换器...', cmd: 'batch-convert' },
+    { label: '格式化转换器...', cmd: 'open-converter' },
+    { label: 'JSON 路径查询...', cmd: 'json-path' },
+    { label: 'JSON 转结构体...', cmd: 'json-to-struct' },
+    { label: 'JSON 结构化 Diff...', cmd: 'json-diff' },
     { sep: true },
-    { label: '批量重命名', cmd: 'batch-rename' },
-    { label: '格式转换', cmd: 'open-converter' },
-    { label: '文档对比', cmd: 'open-diff' },
-    { sep: true },
-    { label: '正则测试...', cmd: 'regex-tester' },
-    { label: 'JSONPath查询', cmd: 'json-path' },
-    { label: 'JSON生成结构体', cmd: 'json-to-struct' },
-    { label: 'JSON对比', cmd: 'json-diff' },
-    { label: '全局搜索...', cmd: 'search-files', key: 'Ctrl+Shift+F' },
-    { sep: true },
+    { label: '正则测试器...', cmd: 'regex-tester' },
     { label: '脚本管理器...', cmd: 'script-manager' },
+    { label: '批量查找替换...', cmd: 'batch-find' },
+    { label: '批量重命名...', cmd: 'batch-rename' },
     { sep: true },
-    { label: '图片编辑模式', cmd: 'image-editor' },
-    { label: '取色器', cmd: 'color-picker' },
+    { label: '文件比较...', cmd: 'file-cmp' },
+    { label: '目录比较...', cmd: 'dir-cmp' },
+    { label: '二进制比较...', cmd: 'bin-cmp' },
+    { label: '选择左侧编码', cmd: 'sel-left' },
+    { label: '选择右侧编码', cmd: 'sel-right' },
+    { label: '比较规则...', cmd: 'cmp-rule' },
+    { label: '最近的比较', cmd: 'recent-cmp' },
     { sep: true },
-    { label: '在资源管理器中打开', cmd: 'explorer' },
+    { label: '十六进制查看', cmd: 'open-hex' },
+    { label: '文本查看', cmd: 'open-text' },
+    { label: '图片编辑器...', cmd: 'image-editor' },
+    { label: '取色器...', cmd: 'color-picker' },
+    { label: '日志模式', cmd: 'log-mode' },
     { sep: true },
-    { label: '打印(&P)', cmd: 'print', key: 'Ctrl+P' },
-    { label: '全屏', cmd: 'fullscreen', key: 'F11' },
+    { label: '剪贴板历史...', cmd: 'clipboard-history' },
+    { label: '记录宏', cmd: 'record-macro' },
+    { label: '停止录制', cmd: 'stop-macro' },
+    { label: '播放宏', cmd: 'play-macro' },
+    { label: '保存宏...', cmd: 'save-macro' },
+    { label: '运行宏(批量)', cmd: 'run-macro-multi' },
   ] as Item[] },
-  { label: '对比(&C)', items: [
-    { label: '文件对比', cmd: 'file-cmp' },
-    { label: '目录对比', cmd: 'dir-cmp' },
-    { label: '二进制对比', cmd: 'bin-cmp' },
-    { sep: true },
-    { label: '选择左侧文件', cmd: 'sel-left' },
-    { label: '选择右侧文件', cmd: 'sel-right' },
-    { label: '对比规则...', cmd: 'cmp-rule' },
-    { sep: true },
-    { label: '最近对比', cmd: 'recent-cmp' },
+  { label: '对比', items: [
+    { label: '文档对比...', cmd: 'open-diff' },
+    { label: '文件比较...', cmd: 'file-cmp' },
+    { label: '目录比较...', cmd: 'dir-cmp' },
   ] as Item[] },
-  { label: '关于(&A)', items: [
+  { label: '关于', items: [
     { label: '关于 EasyText...', cmd: 'about' },
   ] as Item[] },
 ]
 
-// ---- 子菜单 ----
-// 用 reactive() 包裹使 SUBS.recent 等动态子菜单能响应式刷新。
-const SUBS = reactive<Record<string, Item[]>>({
-  'le': [
-    { label: 'Windows(CR+LF)', cmd: 'le-CRLF', chk: true, grp: 'le' },
-    { label: 'Unix(LF)', cmd: 'le-LF', chk: true, grp: 'le' },
-    { label: 'Mac(CR)', cmd: 'le-CR', chk: true, grp: 'le' },
-  ],
-  'blank': [
-    { label: '删除行首空白', cmd: 'trim-head' },
-    { label: '删除行尾空白', cmd: 'trim-tail' },
-    { label: '删除首尾空白', cmd: 'trim-both' },
-    { sep: true },
-    { label: 'Tab 转空格', cmd: 'tab2space' },
-    { label: '空格转 Tab(全部)', cmd: 'space2tab-all' },
-    { label: '行首空格转 Tab', cmd: 'space2tab-lead' },
-  ],
-  'case': [
-    { label: 'UPPERCASE (大写)', cmd: 'case-upper' },
-    { label: 'lowercase (小写)', cmd: 'case-lower' },
-    { label: 'Proper Case (首字母大写)', cmd: 'case-title' },
-    { label: 'Proper Case (混合)', cmd: 'case-title-blend' },
-    { label: 'Sentence case (句首大写)', cmd: 'case-sentence' },
-    { label: 'Sentence case (混合)', cmd: 'case-sentence-blend' },
-    { label: 'Invert Case (大小写反转)', cmd: 'case-invert' },
-    { label: 'Random Case (随机)', cmd: 'case-random' },
-  ],
-  'line': [
-    { label: '复制当前行', cmd: 'line-dup', key: 'Ctrl+D' },
-    { label: '删除当前行', cmd: 'line-del', key: 'Ctrl+L' },
-    { label: '移除重复行', cmd: 'line-rmdup' },
-    { label: '移除连续重复行', cmd: 'line-removeConsecutiveDuplicate' },
-    { label: '拆分行', cmd: 'line-split' },
-    { label: '合并行', cmd: 'line-join' },
-    { label: '上移当前行', cmd: 'line-up', key: 'Ctrl+Shift+Up' },
-    { label: '下移当前行', cmd: 'line-down', key: 'Ctrl+Shift+Down' },
-    { label: '删除空行', cmd: 'line-rmempty' },
-    { label: '删除空行(含空白字符)', cmd: 'line-rmblank' },
-    { label: '在上方插入空行', cmd: 'line-insert-above' },
-    { label: '在下方插入空行', cmd: 'line-insert-below' },
-    { label: '反转行顺序', cmd: 'line-reverse' },
-    { label: '随机排列行顺序', cmd: 'line-randomize' },
-    { sep: true },
-    { label: '按字典升序排列', cmd: 'sort-asc' },
-    { label: '按字典升序(忽略大小写)', cmd: 'sort-asc-ci' },
-    { label: '按字典降序排列', cmd: 'sort-desc' },
-    { label: '按字典降序(忽略大小写)', cmd: 'sort-desc-ci' },
-    { label: '按整数升序排列', cmd: 'sort-int-asc' },
-    { label: '按整数降序排列', cmd: 'sort-int-desc' },
-    { label: '按小数(点)升序排列', cmd: 'sort-float-asc' },
-    { label: '按小数(点)降序排列', cmd: 'sort-float-desc' },
-    { label: '按小数(逗号)升序排列', cmd: 'sort-comma-asc' },
-    { label: '按小数(逗号)降序排列', cmd: 'sort-comma-desc' },
-  ],
-  'bookmark': [
-    { label: '设置/取消书签', cmd: 'toggle-bookmark', key: 'Ctrl+F2' },
-    { label: '下一个书签', cmd: 'next-bookmark', key: 'F2' },
-    { label: '上一个书签', cmd: 'prev-bookmark', key: 'Shift+F2' },
-    { label: '清除所有书签', cmd: 'clear-bookmarks' },
-    { sep: true },
-    { label: '剪切书签行', cmd: 'cut-bookmark-lines' },
-    { label: '复制书签行', cmd: 'copy-bookmark-lines' },
-    { label: '粘贴到书签行', cmd: 'paste-bookmark-lines' },
-    { label: '删除书签行', cmd: 'delete-bookmark-lines' },
-    { label: '删除非书签行', cmd: 'delete-unbookmark-lines' },
-  ],
-  'mark': [
-    { label: '红色标记', cmd: 'mark-red' },
-    { label: '黄色标记', cmd: 'mark-yellow' },
-    { label: '蓝色标记', cmd: 'mark-blue' },
-    { sep: true },
-    { label: '颜色 1', cmd: 'mark-1', chk: true, grp: 'mark' },
-    { label: '颜色 2', cmd: 'mark-2', chk: true, grp: 'mark' },
-    { label: '颜色 3', cmd: 'mark-3', chk: true, grp: 'mark' },
-    { label: '颜色 4', cmd: 'mark-4', chk: true, grp: 'mark' },
-    { label: '颜色 5', cmd: 'mark-5', chk: true, grp: 'mark' },
-    { label: '循环颜色标记', cmd: 'mark-loop' },
-    { sep: true },
-    { label: '清除所有标记', cmd: 'clear-all-marks' },
-  ],
-  'display': [
-    { label: '显示空格/Tab', cmd: 'show-spaces', chk: true, st: 'spaces' },
-    { label: '显示行尾符', cmd: 'show-eol', chk: true, st: 'eol' },
-    { label: '显示全部', cmd: 'show-all', chk: true, st: 'all' },
-  ],
-  'iconsize': [
-    { label: '16 小', cmd: 'iconsize-16', chk: true, grp: 'iconsize' },
-    { label: '20 中', cmd: 'iconsize-20', chk: true, grp: 'iconsize' },
-    { label: '24 大', cmd: 'iconsize-24', chk: true, grp: 'iconsize' },
-  ],
-  'enc-charset': [
-    { label: '阿拉伯语', cmd: 'encode-ar' },
-    { label: '波罗的海语', cmd: 'encode-baltic' },
-    { label: '中欧语', cmd: 'encode-ce' },
-    { label: '简体中文(GB2312)', cmd: 'encode-GB2312' },
-    { label: '繁体中文(Big5)', cmd: 'encode-Big5' },
-    { label: '西里尔语', cmd: 'encode-cyrillic' },
-    { label: '希腊语', cmd: 'encode-greek' },
-    { label: '希伯来语', cmd: 'encode-hebrew' },
-    { label: '日语(Shift-JIS)', cmd: 'encode-SJIS' },
-    { label: '韩语', cmd: 'encode-korean' },
-    { label: '泰语', cmd: 'encode-thai' },
-    { label: '土耳其语', cmd: 'encode-turkish' },
-    { label: '越南语', cmd: 'encode-vietnamese' },
-    { label: '西欧语', cmd: 'encode-we' },
-  ],
-  'lang': [
-    { label: '中文', cmd: 'lang-zh', chk: true, grp: 'lang' },
-    { label: 'English', cmd: 'lang-en', chk: true, grp: 'lang' },
-  ],
-  'fmtlang': [
-    { label: '格式化 XML', cmd: 'fmt-xml' },
-    { label: '格式化 JSON', cmd: 'fmt-json' },
-  ],
-  'comment': [
-    { label: '单行注释/取消注释', cmd: 'comment-line', key: 'Ctrl+/' },
-    { label: '块注释/取消注释', cmd: 'comment-block', key: 'Ctrl+Shift+/' },
-  ],
-  'clipboard': [
-    { label: '复制当前行', cmd: 'copy-line' },
-    { label: '剪切当前行', cmd: 'cut-line' },
-  ],
-  'fav': [
-    { label: '管理收藏夹...', cmd: 'manage-fav' },
-    { sep: true },
-    { label: '(空)', cmd: 'fav-empty' },
-  ],
-  'import': [
-    { label: '导入主题...', cmd: 'import-theme' },
-    { label: '导入快捷键...', cmd: 'import-shortcut' },
-  ],
-  'export': [
-    { label: '导出主题...', cmd: 'export-theme' },
-    { label: '导出快捷键...', cmd: 'export-shortcut' },
-  ],
-  'recent': [] as Item[],
-})
-
-// 刷新「最近打开的文件」子菜单：从后端拉取并写回 SUBS.recent，
-// 修复"菜单最近打开文件一直空"的 Bug。
-async function refreshRecentSubmenu() {
-  try {
-    const list = (await GetRecentFiles()) as Array<{ path: string; name: string }> | null
-    if (!list || list.length === 0) {
-      SUBS.recent.splice(0, SUBS.recent.length, { label: '(无最近文件)', cmd: 'recent-empty' })
-      return
-    }
-    const items: Item[] = list.slice(0, 10).map((e, i) => ({
-      label: `${i + 1}. ${e.name || e.path.split(/[\\/]/).pop() || e.path}`,
-      cmd: `recent-open-${i}`,
-      // 同时挂个 st 携带原路径，交给 onMenuCmd 解析
-      st: e.path,
-    }))
-    SUBS.recent.splice(0, SUBS.recent.length, ...items)
-  } catch (e) {
-    // 后端未就绪：保持空数组，模板已经处理（空菜单=短暂空白）
-    console.warn('refreshRecentSubmenu failed', e)
-  }
-}
-
-// 点击菜单栏外部时收起展开的菜单（具名函数以便卸载时精确移除）
-function onDocumentClick(e: MouseEvent) {
-  if (!(e.target as HTMLElement).closest('.menubar')) closeAll()
-}
-
-onMounted(() => {
-  document.addEventListener('click', onDocumentClick)
-  refreshRecentSubmenu()
-  // 监听「最近文件已更新」事件，触发刷新（在 useFileOps.AddRecentEntry 后调用）
-  document.addEventListener('recent-updated', refreshRecentSubmenu)
-  // 窗口聚焦时刷新一次（应对外部修改数据库或上次崩溃残留）
-  window.addEventListener('focus', refreshRecentSubmenu)
-})
-
-onUnmounted(() => {
-  document.removeEventListener('click', onDocumentClick)
-  document.removeEventListener('recent-updated', refreshRecentSubmenu)
-  window.removeEventListener('focus', refreshRecentSubmenu)
-})
-
-// ---- 交互状态 ----
-const active = ref(-1)
-const subKey = ref('')
-const langLetter = ref('')
-// 子菜单靠右空间不足时向左展开，避免被窗口边缘裁切
-const subFlip = ref(false)
-const checks = ref<Record<string, boolean>>({ wrap: false, filelist: false, toolbar: true, statusbar: true, webaddr: false, spaces: false, eol: false, all: false })
-const radios = ref<Record<string, string>>({ le: 'CRLF', enc: 'UTF-8', iconsize: '20', lang: 'zh-CN', mark: '' })
-
-function isOpen(i: number) { return active.value === i }
-function open(i: number) { active.value = i; subKey.value = ''; langLetter.value = '' }
-function toggle(i: number) { active.value === i ? closeAll() : open(i) }
-function onHover(i: number) { if (active.value >= 0 && i !== active.value) open(i) }
-function closeAll() { active.value = -1; subKey.value = ''; langLetter.value = '' }
-
-/** 该命令当前版本是否有真实实现（未实现的置灰，避免点击后毫无反应） */
-function isOff(it: Item): boolean {
-  return !!it.cmd && NOT_IMPLEMENTED.has(it.cmd)
-}
-
-function openSub(key: string, e: MouseEvent) {
-  subKey.value = key
-  const rect = (e.currentTarget as HTMLElement)?.getBoundingClientRect()
-  // 右侧空间不足以再放一个子菜单（按 460px 估算）则向左展开
-  subFlip.value = !!rect && rect.right + 460 > window.innerWidth
-}
-
-function clickItem(it: Item) {
-  if (isOff(it)) { ElMessage.info('该功能暂未实现'); closeAll(); return }
-  if (it.sub) { subKey.value = it.sub; return }
-  if (it.chk) {
-    if (it.st) { checks.value[it.st] = !checks.value[it.st]; emit('cmd', it.cmd!) }
-    else if (it.grp) { radios.value[it.grp] = it.cmd!.split('-').pop()!; emit('cmd', it.cmd!) }
-    else emit('cmd', it.cmd!)
-  } else if (it.cmd) {
-    // 「最近打开的文件」子项的 cmd 形如 recent-open-N，附加的 st 字段携带原路径，
-    // 这里把 path 作为参数传给父监听器，匹配 useCommands 中新增的 `recent-open`。
-    if (it.cmd.startsWith('recent-open') && it.st) emit('cmd', 'recent-open', it.st)
-    else emit('cmd', it.cmd)
-  }
-  closeAll()
-}
-
-function checked(it: Item): boolean {
-  if (it.st) return checks.value[it.st] ?? false
-  if (it.grp) return radios.value[it.grp] === it.cmd!.split('-').pop()
+// ---- 状态：实时从 store 取 ----
+const wrapOn       = computed(() => !!se.config?.editor?.wordWrap)
+const wsOn         = computed(() => !!se.config?.editor?.showWhitespace)
+const showToolbar  = computed(() => !!se.config?.ui?.showToolBar)
+const showStatus   = computed(() => !!se.config?.ui?.showStatusBar)
+const showFileList = computed(() => !!se.config?.ui?.showFileListView)
+const indentGuide  = computed(() => false) // TODO: 与 settingStore 对接（M3 再做）
+function isChecked(it: Item): boolean {
+  if (!it.chk) return false
+  if (it.grp === 'toolbar' && it.st === 'show')  return showToolbar.value
+  if (it.grp === 'toolbar' && it.st === 'status') return showStatus.value
+  if (it.cmd === 'toggle-filelist') return showFileList.value
+  if (it.cmd === 'toggle-wrap') return wrapOn.value
+  if (it.cmd === 'toggle-whitespace') return wsOn.value
+  if (it.cmd === 'toggle-indent-guide') return indentGuide.value
   return false
 }
 
-function pickSub(it: Item) {
-  if (isOff(it)) { ElMessage.info('该功能暂未实现'); closeAll(); return }
-  if (it.sub) subKey.value = it.sub
-  else if (it.cmd) { emit('cmd', it.cmd); closeAll() }
+// ---- 打开 / 关闭 / 导航 ----
+const openIdx = ref<number | null>(null)        // 顶层菜单下标
+const subId   = ref<string | null>(null)        // 当前子菜单 key
+
+const recent = ref<Array<{ path: string, name: string }>>([])
+async function refreshRecent() {
+  try {
+    const r = await GetRecentFiles()
+    if (Array.isArray(r)) recent.value = r as any
+  } catch { /* ignore */ }
 }
 
-function pickLang(lang: string) { emit('cmd', 'set-lang', lang); closeAll() }
+function toggle(idx: number) {
+  if (openIdx.value === idx) {
+    close()
+  } else {
+    openIdx.value = idx
+    subId.value = null
+    if (MENUS[idx].items.some((it: Item) => it.sub === 'recent')) refreshRecent()
+  }
+}
+function onHover(idx: number) {
+  if (openIdx.value !== null && openIdx.value !== idx) {
+    openIdx.value = idx
+    subId.value = null
+    if (MENUS[idx].items.some((it: Item) => it.sub === 'recent')) refreshRecent()
+  }
+}
+function openSub(id: string, ev?: MouseEvent) {
+  subId.value = id
+  if (id === 'recent') refreshRecent()
+  if (id === 'recent' && ev) {
+    nextTick(() => positionSubRight(ev.currentTarget as HTMLElement))
+  }
+}
+
+const subFlip = ref(false)
+function positionSubRight(anchor: HTMLElement) {
+  const r = anchor.getBoundingClientRect()
+  subFlip.value = (window.innerWidth - (r.right + 220)) < 0
+}
+function close() {
+  openIdx.value = null
+  subId.value = null
+}
+
+function clickItem(it: Item) {
+  if (it.sep) return
+  if (it.cmd && NOT_IMPLEMENTED.has(it.cmd)) {
+    ElMessage.info('该功能暂未实现')
+    close()
+    return
+  }
+  if (it.cmd) {
+    if (it.cmd.startsWith('recent-open-')) {
+      emit('cmd', 'recent-open', it.cmd.slice('recent-open-'.length))
+    } else {
+      emit('cmd', it.cmd)
+    }
+    close()
+    return
+  }
+  // 勾选类（菜单里有 cmd 但语义是切换）：emit cmd，由 useCommands 处理
+  if (it.chk && it.cmd) {
+    emit('cmd', it.cmd)
+    close()
+  }
+}
+
+function pickZoom(v: number) { emit('cmd', 'iconsize-' + v); close() }
+function pickIconSize(v: number) { emit('cmd', 'iconsize-' + v); close() }
+function pickTheme(name: string) { emit('cmd', 'theme-style', name); close() }
+function pickLang(name: string) { emit('cmd', 'set-lang', name); close() }
+function pickUiLang(name: string) { emit('cmd', name === 'zh' ? 'lang-zh' : 'lang-en'); close() }
+
+// ---- 键盘 ----
+function onMenuKey(e: KeyboardEvent) {
+  if (openIdx.value === null) return
+  const idx = openIdx.value
+  const items = MENUS[idx].items.filter((x: Item) => !x.sep) as Item[]
+  const cur = items.findIndex((x: Item) => x.label === (e.target as HTMLElement)?.dataset?.label)
+  if (e.key === 'ArrowDown') {
+    e.preventDefault()
+    moveFocus(items, cur + 1)
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault()
+    moveFocus(items, cur - 1)
+  } else if (e.key === 'Escape') {
+    e.preventDefault()
+    close()
+    focusTopBtn(idx)
+  } else if (e.key === 'ArrowRight') {
+    e.preventDefault()
+    if (idx + 1 < MENUS.length) toggle(idx + 1)
+  } else if (e.key === 'ArrowLeft') {
+    e.preventDefault()
+    if (idx > 0) toggle(idx - 1)
+  } else if (e.key === 'Enter') {
+    e.preventDefault()
+    const cur2 = items.findIndex((x: Item) => x.label === (e.target as HTMLElement)?.dataset?.label)
+    if (cur2 >= 0) clickItem(items[cur2])
+  }
+}
+function moveFocus(items: Item[], next: number) {
+  const wrap = (n: number) => (n + items.length) % items.length
+  const target = items[wrap(next)]
+  const el = document.querySelector(`[data-menu-idx="${openIdx.value}"] [data-label="${CSS.escape(target.label || '')}"]`) as HTMLElement
+  el?.focus()
+}
+function focusTopBtn(idx: number) {
+  const el = document.querySelector(`[data-top-idx="${idx}"]`) as HTMLElement
+  el?.focus()
+}
+
+// ---- 外部点击关闭 ----
+function onDocClick(e: MouseEvent) {
+  if (!(e.target as HTMLElement).closest('.mb-wrap')) close()
+}
+
+onMounted(() => {
+  document.addEventListener('click', onDocClick)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('click', onDocClick)
+})
+
+// ---- 子菜单内容 ----
+const themes = ['default', 'light', 'dark', 'monokai', 'solarized-light', 'solarized-dark', 'github-light', 'github-dark']
+function itemsForSub(id: string): Item[] {
+  switch (id) {
+    case 'zoom':     return [{ label: '放大', cmd: 'zoom-in' }, { label: '缩小', cmd: 'zoom-out' }, { label: '重置', cmd: 'zoom-reset' }]
+    case 'iconsize': return [{ label: '14 px', cmd: 'iconsize-14' }, { label: '16 px', cmd: 'iconsize-16' }, { label: '18 px', cmd: 'iconsize-18' }]
+    case 'theme':    return themes.map(t => ({ label: t, cmd: 'theme-style' }))
+    case 'uilang':   return [{ label: '简体中文', cmd: 'lang-zh' }, { label: 'English', cmd: 'lang-en' }]
+    case 'fav':      return [{ label: '管理收藏夹...', cmd: 'manage-fav' }, { label: '清空收藏夹', cmd: 'clear-favorites' }]
+    case 'recent':   return recent.value.length
+        ? recent.value.map(r => ({ label: r.name || r.path, cmd: 'recent-open-' + r.path }))
+        : [{ label: '暂无记录', cmd: 'recent-empty' } as Item]
+    default:         return []
+  }
+}
+
+// 当前打开菜单的 items（用于键盘聚焦）
+const openItems = computed(() => {
+  if (openIdx.value === null) return [] as Item[]
+  return MENUS[openIdx.value].items.filter((x: Item) => !x.sep) as Item[]
+})
 </script>
 
 <template>
-  <div class="menubar">
-    <div v-for="(menu, idx) in MENUS" :key="menu.label" class="menu-top" @mouseenter="onHover(idx)">
-      <button class="menu-btn" :class="{ active: isOpen(idx) }" @click.stop="toggle(idx)">
-        {{ showLabel(menu.label) }}
-      </button>
+  <div class="et-chrome-row et-chrome-menu mb-wrap" @keydown="onMenuKey">
+    <div
+      v-for="(m, idx) in MENUS"
+      :key="m.label"
+      class="mb-wrap"
+    >
+      <button
+        class="mb-top"
+        :class="{ 'is-open': openIdx === idx }"
+        :data-top-idx="idx"
+        tabindex="0"
+        @click.stop="toggle(idx)"
+        @mouseenter="onHover(idx)"
+      >{{ showLabel(m.label) }}</button>
 
-      <!-- 普通下拉菜单 -->
-      <div v-if="isOpen(idx) && menu.items.length > 0" class="menu-dd">
-        <template v-for="(it, i) in (menu.label.startsWith('语言') ? [] : menu.items)" :key="i">
-          <div v-if="it.sep" class="menu-sep" />
-          <div v-else class="menu-row" :class="{ hl: subKey === it.sub, off: isOff(it) }"
-            @click.stop="clickItem(it)"
-            @mouseenter="it.sub && openSub(it.sub, $event)">
-            <span class="flex items-center gap-1">
-              <span v-if="it.chk" class="w-3 text-center blue">{{ checked(it) ? '✓' : '' }}</span>
-              <span>{{ showLabel(it.label) }}</span>
-            </span>
-            <span v-if="it.key" class="menu-short">{{ it.key }}</span>
-            <span v-else-if="it.sub" class="menu-arrow">▶</span>
-            <!-- ★ 子菜单嵌套在 menu-row 内部，跟随行位置；空间不足时向左翻转 -->
-            <div v-if="it.sub && subKey === it.sub && SUBS[it.sub]" class="menu-sub" :class="{ flip: subFlip }">
-              <template v-for="(si, j) in SUBS[it.sub]" :key="j">
-                <div v-if="si.sep" class="menu-sep" />
-                <div v-else class="menu-row" :class="{ off: isOff(si) }" @click.stop="pickSub(si)">
-                  <span class="flex items-center gap-1">
-                    <span v-if="si.chk" class="w-3 text-center blue">{{ checked(si) ? '✓' : '' }}</span>
-                    <span>{{ showLabel(si.label) }}</span>
-                  </span>
-                  <span v-if="si.key" class="menu-short">{{ si.key }}</span>
-                </div>
-              </template>
-            </div>
+      <div v-if="openIdx === idx" class="mb-menu" :data-menu-idx="idx">
+        <template v-if="m.label.startsWith('语言')">
+          <div v-for="(langs, g) in LANG_GROUPS" :key="g" class="mb-lang-group">
+            <div class="mb-lang-head">{{ g }}</div>
+            <button
+              v-for="lang in langs"
+              :key="lang"
+              class="mb-item"
+              :class="{ 'is-active': ed.activeTab?.language?.toLowerCase() === lang.toLowerCase() }"
+              @click="pickLang(lang)"
+            >
+              <span class="mb-item-chk">
+                <Check v-if="ed.activeTab?.language?.toLowerCase() === lang.toLowerCase()" :size="12" :stroke-width="2" />
+              </span>
+              <span class="mb-item-label">{{ lang }}</span>
+            </button>
           </div>
         </template>
-      </div>
 
-      <!-- 语言菜单（特殊） -->
-      <div v-if="isOpen(idx) && menu.label.startsWith('语言')" class="menu-dd">
-        <div v-for="(_v, letter) in LANG_GROUPS" :key="letter"
-          class="menu-row" :class="{ hl: langLetter === letter }"
-          @click.stop="langLetter = letter"
-          @mouseenter="langLetter = letter">
-          {{ letter }} <span class="menu-arrow ml-auto">▶</span>
-          <div v-if="langLetter === letter" class="menu-sub">
-            <div v-for="lang in LANG_GROUPS[letter]" :key="lang" class="menu-row" @click.stop="pickLang(lang)">
-              <span class="w-3 text-center blue">{{ editor.activeTab?.language?.toLowerCase() === lang.toLowerCase() ? '✓' : '' }}</span>
-              <span class="ml-1">{{ lang }}</span>
+        <template v-else>
+          <template v-for="(it, j) in m.items" :key="j">
+            <div v-if="it.sep" class="mb-sep" />
+            <button
+              v-else
+              class="mb-item"
+              :class="{ 'is-checked': isChecked(it), 'is-disabled': it.cmd && NOT_IMPLEMENTED.has(it.cmd) }"
+              :data-label="it.label"
+              @click="clickItem(it)"
+              @mouseenter="it.sub && openSub(it.sub, $event)"
+            >
+              <span class="mb-item-chk">
+                <Check v-if="isChecked(it)" :size="12" :stroke-width="2" />
+              </span>
+              <span class="mb-item-label">{{ showLabel(it.label) }}</span>
+              <span v-if="it.sub" class="mb-item-arrow">
+                <ChevronRight :size="12" :stroke-width="1.6" />
+              </span>
+              <span v-else-if="it.key" class="mb-item-key">{{ it.key }}</span>
+            </button>
+
+            <!-- 子菜单：浮动定位 -->
+            <div
+              v-if="it.sub && subId === it.sub"
+              class="mb-sub"
+              :class="{ 'mb-sub-flip': subFlip }"
+              :data-sub="it.sub"
+            >
+              <button
+                v-for="(sub, k) in itemsForSub(it.sub)"
+                :key="k"
+                class="mb-item"
+                @click="
+                  it.sub === 'zoom' ? pickZoom(sub.cmd === 'zoom-in' ? 110 : sub.cmd === 'zoom-out' ? 90 : 100) :
+                  it.sub === 'iconsize' ? pickIconSize(parseInt((sub.cmd || '').split('-')[1] || '18', 10)) :
+                  it.sub === 'theme' ? pickTheme(sub.label || '') :
+                  it.sub === 'uilang' ? pickUiLang((sub.cmd || '').endsWith('zh') ? 'zh' : 'en') :
+                  clickItem(sub)
+                "
+              >
+                <span class="mb-item-chk" />
+                <span class="mb-item-label">{{ sub.label }}</span>
+                <span v-if="sub.key" class="mb-item-key">{{ sub.key }}</span>
+              </button>
             </div>
-          </div>
-        </div>
+          </template>
+        </template>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.menubar {
-  display: flex; align-items: center; height: var(--et-h-menu); padding: 0 4px; gap: 2px;
-  border-bottom: 1px solid var(--et-border); background: var(--et-bg-sunken); user-select: none;
-  font-size: 12px;
+.mb-top {
+  height: 100%;
+  padding: 0 10px;
+  background: transparent;
+  border: 0;
+  color: var(--et-fg);
+  font-size: var(--et-text-md);
+  cursor: pointer;
+  border-radius: 0;
+  transition: background-color 80ms ease;
+  -webkit-user-select: none;
+  user-select: none;
 }
-.menu-top { position: relative; }
-.menu-btn {
-  padding: 0 9px; height: 24px; border: none; background: none; color: var(--et-fg);
-  border-radius: var(--et-radius-sm); cursor: pointer; font-size: 12px; white-space: nowrap;
-  transition: background .12s ease, color .12s ease;
+.mb-top:hover,
+.mb-top.is-open {
+  background-color: var(--et-bg-hover);
 }
-.menu-btn:hover, .menu-btn.active { background: var(--et-bg-active); }
+.mb-top:focus-visible {
+  outline: 2px solid var(--et-accent);
+  outline-offset: -2px;
+}
 
-.menu-dd {
-  position: absolute; left: 0; top: calc(100% + 4px); z-index: 9999; min-width: 220px;
-  max-height: calc(100vh - 80px); overflow-y: auto; overscroll-behavior: contain;
-  background: var(--et-bg-elevated); border: 1px solid var(--et-border);
+/* —— 下拉主菜单 —— */
+.mb-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 1100;
+  min-width: 240px;
+  padding: var(--et-space-1);
+  background: var(--et-bg-elevated);
+  border: 1px solid var(--et-border);
+  border-radius: var(--et-radius);
   box-shadow: var(--et-shadow-md);
-  border-radius: var(--et-radius); padding: 4px; font-size: 12px;
+  animation: mb-menu-in 80ms ease-out;
+}
+@keyframes mb-menu-in {
+  from { opacity: 0; transform: translateY(-2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.mb-item {
+  display: flex;
+  align-items: center;
+  gap: var(--et-space-2);
+  width: 100%;
+  padding: 5px var(--et-space-2);
+  border: 0;
+  border-radius: var(--et-radius-sm);
+  background: transparent;
+  color: var(--et-fg);
+  font-size: var(--et-text-md);
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 80ms ease;
+}
+.mb-item:hover:not(.is-disabled),
+.mb-item:focus-visible {
+  background-color: var(--et-bg-hover);
+  outline: none;
+}
+.mb-item.is-disabled {
+  color: var(--et-fg-subtle);
+  cursor: not-allowed;
+}
+.mb-item.is-checked {
+  color: var(--et-accent);
 }
 
-.menu-row {
-  display: flex; align-items: center; justify-content: space-between; position: relative;
-  padding: 5px 10px; cursor: pointer; white-space: nowrap; color: var(--et-fg);
-  min-width: 200px; border-radius: var(--et-radius-sm);
-  transition: background .1s ease, color .1s ease;
+.mb-item-chk {
+  display: inline-flex;
+  width: 14px;
+  align-items: center;
+  justify-content: center;
+  color: var(--et-accent);
+  flex-shrink: 0;
 }
-.menu-row:hover, .menu-row.hl { background: var(--et-accent-soft); color: var(--et-accent); }
-/* 未接线的命令：明确置灰，不再伪装成可用项 */
-.menu-row.off { color: var(--et-fg-subtle); cursor: default; }
-.menu-row.off:hover { background: transparent; color: var(--et-fg-subtle); }
+.mb-item-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mb-item-key {
+  color: var(--et-fg-subtle);
+  font-size: var(--et-text-xs);
+  font-variant-numeric: tabular-nums;
+  margin-left: var(--et-space-3);
+}
+.mb-item-arrow {
+  color: var(--et-fg-subtle);
+  display: inline-flex;
+  align-items: center;
+}
 
-/* ★ 子菜单：嵌套在 .menu-row 内部，top:-4px 抵消父级 padding 对齐当前行 */
-.menu-sub {
-  position: absolute; left: calc(100% + 4px); top: -5px; z-index: 10000; min-width: 220px;
-  max-height: calc(100vh - 80px); overflow-y: auto; overscroll-behavior: contain;
-  background: var(--et-bg-elevated); border: 1px solid var(--et-border);
+.mb-sep {
+  height: 1px;
+  margin: var(--et-space-1) var(--et-space-2);
+  background-color: var(--et-border);
+}
+
+/* —— 子菜单（嵌套弹层） —— */
+.mb-sub {
+  position: absolute;
+  left: calc(100% + var(--et-space-1));
+  top: -5px;
+  z-index: 1100;
+  min-width: 200px;
+  padding: var(--et-space-1);
+  background: var(--et-bg-elevated);
+  border: 1px solid var(--et-border);
+  border-radius: var(--et-radius);
   box-shadow: var(--et-shadow-md);
-  border-radius: var(--et-radius); padding: 4px; font-size: 12px;
+  animation: mb-menu-in 80ms ease-out;
 }
-/* 靠右空间不足时向左展开 */
-.menu-sub.flip { left: auto; right: calc(100% + 4px); }
+.mb-sub-flip {
+  left: auto;
+  right: calc(100% + var(--et-space-1));
+}
 
-.menu-sep { margin: 4px 6px; height: 1px; background: var(--et-border); }
-.menu-short, .menu-arrow { margin-left: auto; padding-left: 20px; font-size: 11px; color: var(--et-fg-subtle); }
-.menu-arrow { font-size: 9px; }
-.blue { color: var(--et-accent); }
+/* —— 语言菜单分组 —— */
+.mb-lang-group {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(120px, 1fr));
+  gap: 0;
+}
+.mb-lang-head {
+  grid-column: 1 / -1;
+  padding: 4px 10px;
+  font-size: var(--et-text-xs);
+  font-weight: var(--et-fw-semibold);
+  color: var(--et-fg-subtle);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
 </style>

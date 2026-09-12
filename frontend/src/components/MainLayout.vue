@@ -13,6 +13,9 @@ import { useCommands } from '@/composables/useCommands'
 import { useFileOps } from '@/composables/useFileOps'
 import { useTailWatcher } from '@/composables/useTailWatcher'
 import { confirmDialog, confirmSaveDiscard } from '@/utils/confirm'
+import {
+  Files, FolderTree, Code2, Bookmark, ListTree, Activity,
+} from 'lucide-vue-next'
 
 // ---- Components ----
 import NddMenuBar from './NddMenuBar.vue'
@@ -87,8 +90,13 @@ watch(showSnippetPanel, (v) => { if (v) sidebarTab.value = 'snippets' })
 watch(showBookmarkPanel, (v) => { if (v) sidebarTab.value = 'bookmarks' })
 watch(showFunctionList, (v) => { if (v) sidebarTab.value = 'functions' })
 watch(showFileMonitor, (v) => { if (v) sidebarTab.value = 'monitor' })
-const panelWidth = ref(250)
+const panelWidth = ref<number>(250)
 const resizing = ref(false)
+
+// v2.1：从持久化配置恢复侧栏宽度（与 setSidebarWidth 配对）
+if (ss.config?.ui?.fileTreeWidth && typeof ss.config.ui.fileTreeWidth === 'number') {
+  panelWidth.value = ss.config.ui.fileTreeWidth
+}
 
 // ---- 文件 I/O composable（抽出大量样板）----
 const fileOps = useFileOps({
@@ -288,9 +296,28 @@ function onFindResults(e: Event) {
 }
 
 // ---- Panel resize ----
-function resizeStart() { resizing.value = true; document.addEventListener('mousemove', resizeMove); document.addEventListener('mouseup', resizeEnd) }
-function resizeMove(e: MouseEvent) { if (resizing.value) panelWidth.value = Math.max(150, Math.min(500, e.clientX)) }
-function resizeEnd() { resizing.value = false; document.removeEventListener('mousemove', resizeMove); document.removeEventListener('mouseup', resizeEnd) }
+let resizeCleanup = () => {}
+function resizeStart() {
+  resizing.value = true
+  document.addEventListener('mousemove', resizeMove)
+  document.addEventListener('mouseup', resizeEnd)
+  resizeCleanup = () => {
+    document.removeEventListener('mousemove', resizeMove)
+    document.removeEventListener('mouseup', resizeEnd)
+  }
+}
+function resizeMove(e: MouseEvent) {
+  if (!resizing.value) return
+  panelWidth.value = Math.max(150, Math.min(500, e.clientX))
+}
+function resizeEnd() {
+  if (!resizing.value) return
+  resizing.value = false
+  // v2.1：拖拽结束后落盘（store 内部已 300ms debounce，再触发一次即可）
+  ss.setSidebarWidth(panelWidth.value)
+  resizeCleanup()
+  resizeCleanup = () => {}
+}
 
 // 🆕 V2.0.0 拖拽增强：支持文件/文件夹/文本拖放
 function onDrop(e: DragEvent) {
@@ -872,7 +899,7 @@ onUnmounted(() => {
         class="sidebar-panel flex flex-shrink-0"
         :style="{ width: panelWidth + 'px' }"
       >
-        <!-- 左侧垂直 Tab 图标栏 -->
+        <!-- 左侧垂直 Tab 图标栏（Lucide 替代原手撸 SVG） -->
         <div class="sidebar-tab-bar">
           <button
             title="文件列表"
@@ -880,7 +907,7 @@ onUnmounted(() => {
             :class="{ active: sidebarTab === 'files' }"
             @click="switchSidebarTab('files')"
           >
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2M9 5v14"/></svg>
+            <Files :size="16" :stroke-width="1.6" />
           </button>
           <button
             title="目录树"
@@ -888,7 +915,7 @@ onUnmounted(() => {
             :class="{ active: sidebarTab === 'tree' }"
             @click="switchSidebarTab('tree')"
           >
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-6l-2-2H5a2 2 0 0 0-2 2z"/></svg>
+            <FolderTree :size="16" :stroke-width="1.6" />
           </button>
           <button
             title="代码片段"
@@ -896,7 +923,7 @@ onUnmounted(() => {
             :class="{ active: sidebarTab === 'snippets' }"
             @click="switchSidebarTab('snippets')"
           >
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+            <Code2 :size="16" :stroke-width="1.6" />
           </button>
           <button
             title="书签"
@@ -904,7 +931,7 @@ onUnmounted(() => {
             :class="{ active: sidebarTab === 'bookmarks' }"
             @click="switchSidebarTab('bookmarks')"
           >
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M5 5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16l-7-3.5L5 21V5z"/></svg>
+            <Bookmark :size="16" :stroke-width="1.6" />
           </button>
           <button
             title="函数列表"
@@ -912,7 +939,7 @@ onUnmounted(() => {
             :class="{ active: sidebarTab === 'functions' }"
             @click="switchSidebarTab('functions')"
           >
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h10"/></svg>
+            <ListTree :size="16" :stroke-width="1.6" />
           </button>
           <button
             title="文件监控"
@@ -920,7 +947,7 @@ onUnmounted(() => {
             :class="{ active: sidebarTab === 'monitor' }"
             @click="switchSidebarTab('monitor')"
           >
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" d="M3 3v18h18"/><path stroke-linecap="round" d="M7 15l4-4 3 3 5-6"/></svg>
+            <Activity :size="16" :stroke-width="1.6" />
           </button>
         </div>
         <!-- 面板内容区域 -->
@@ -1005,8 +1032,8 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 8px 0;
-  gap: 4px;
+  padding: var(--et-space-2) 0;
+  gap: var(--et-space-1);
 }
 
 /* 侧边栏 Tab 切换按钮 */
@@ -1021,7 +1048,8 @@ onUnmounted(() => {
   background: transparent;
   color: var(--et-fg-subtle);
   cursor: pointer;
-  transition: background .15s ease, color .15s ease;
+  transition: background-color 80ms ease, color 80ms ease;
+  position: relative;
 }
 .sidebar-tab-btn:hover {
   background: var(--et-bg-hover);
@@ -1031,13 +1059,24 @@ onUnmounted(() => {
   background: var(--et-accent-soft);
   color: var(--et-accent);
 }
+/* active 状态左侧加 2px 主色条，与 TabBar 一致 */
+.sidebar-tab-btn.active::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 16px;
+  background: var(--et-accent);
+  border-radius: 0 2px 2px 0;
+}
 
 .panel-resizer {
   width: 3px;
   cursor: col-resize;
   background: transparent;
   flex-shrink: 0;
-  transition: background .15s ease;
+  transition: background-color 80ms ease;
 }
 .panel-resizer:hover {
   background: var(--et-accent);

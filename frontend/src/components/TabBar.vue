@@ -1,21 +1,29 @@
 <script lang="ts" setup>
+/**
+ * Tab Bar v2.1
+ *
+ * 设计目标（对标 Notepad-- / Sublime Text）：
+ *  - 高度 30px，与菜单/工具栏阶梯一致。
+ *  - 关闭按钮常显（Sublime 风），hover 高亮；脏文件右上小圆点 (.et-dot-warn)。
+ *  - tab 宽度 90–160（紧凑）；拖拽时源 tab 半透明 + 插入位置 2px 主色条。
+ *  - tab-actions 颜色统一 token。
+ */
 import { ref, nextTick, onMounted, onUnmounted } from 'vue'
 import { useEditorStore, useFileStore } from '@/stores'
 import {
-  X, FileText, XCircle, XSquare, CheckCircle2, Clipboard, Pencil,
-  ChevronsLeft, ChevronRight, ChevronsRight,
+  X, FileText, XCircle, XSquare, CheckCircle2,
+  ChevronsLeft, ChevronsRight,
   Save, ExternalLink, FolderOpen, FileCode, Binary,
-  GitCompare, Copy,
+  GitCompare, Copy, Pencil,
 } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
 import type { EditorTab } from '@/types'
-import { SaveFile, RenameFile, GetDirectoryTree, ShowMessageDialog, SaveFileDialog } from '../../wailsjs/go/main/App'
+import { SaveFile, RenameFile, GetDirectoryTree, SaveFileDialog } from '../../wailsjs/go/main/App'
 import { confirmDialog, confirmSaveDiscard } from '@/utils/confirm'
 
 const editorStore = useEditorStore()
 const fileStore = useFileStore()
 
-// Context menu state
 const contextMenu = ref({
   visible: false,
   x: 0,
@@ -23,12 +31,10 @@ const contextMenu = ref({
   tabId: '',
 })
 
-// Inline rename state
 const renamingTabId = ref<string | null>(null)
 const renameValue = ref('')
 let renameInputEl: HTMLInputElement | null = null
 
-// 🆕 V2.0.0 拖拽排序
 const dragIndex = ref<number | null>(null)
 const dragOverIndex = ref<number | null>(null)
 
@@ -39,18 +45,15 @@ function onDragStart(e: DragEvent, idx: number) {
     e.dataTransfer.setData('text/plain', String(idx))
   }
 }
-
 function onDragOver(e: DragEvent, idx: number) {
   e.preventDefault()
   if (dragIndex.value === null || dragIndex.value === idx) return
   dragOverIndex.value = idx
   if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
 }
-
 function onDragLeave() {
   dragOverIndex.value = null
 }
-
 function onDrop(e: DragEvent, idx: number) {
   e.preventDefault()
   if (dragIndex.value === null || dragIndex.value === idx) return
@@ -60,13 +63,11 @@ function onDrop(e: DragEvent, idx: number) {
   dragIndex.value = null
   dragOverIndex.value = null
 }
-
 function onDragEnd() {
   dragIndex.value = null
   dragOverIndex.value = null
 }
 
-// Function ref for v-for compatibility (Vue 3 collects refs in v-for into an array)
 function setRenameRef(el: any) {
   renameInputEl = el as HTMLInputElement | null
 }
@@ -96,11 +97,7 @@ function selectTab(tab: EditorTab) {
   editorStore.activateTab(tab.id)
 }
 
-function getTabTitle(tab: EditorTab): string {
-  return tab.name + (tab.isDirty ? ' •' : '')
-}
-
-// Right-click context menu
+// 右键菜单
 function handleContextMenu(e: MouseEvent, tab: EditorTab) {
   e.preventDefault()
   e.stopPropagation()
@@ -111,51 +108,51 @@ function handleContextMenu(e: MouseEvent, tab: EditorTab) {
     tabId: tab.id,
   }
 }
-
 function closeContextMenu() {
   contextMenu.value.visible = false
 }
 
-// Context menu actions
 function closeThisTab() {
   const tab = editorStore.tabs.find(t => t.id === contextMenu.value.tabId)
-  if (tab) {
-    closeTab(tab, new MouseEvent('click'))
-  }
+  if (tab) closeTab(tab, new MouseEvent('click'))
 }
-
 function closeOtherTabs() {
   closeContextMenu()
-  const tabId = contextMenu.value.tabId
-  editorStore.closeOtherTabs(tabId)
+  editorStore.closeOtherTabs(contextMenu.value.tabId)
   ElMessage.success('已关闭其他标签页')
 }
-
 function closeLeftAllTabs() {
   closeContextMenu()
   const tabId = contextMenu.value.tabId
   const tabIndex = editorStore.tabs.findIndex(t => t.id === tabId)
   if (tabIndex === -1) return
-  const tabsToClose = editorStore.tabs.slice(0, tabIndex)
-  for (const tab of tabsToClose) {
+  for (const tab of editorStore.tabs.slice(0, tabIndex)) {
     editorStore.closeTab(tab.id)
   }
-  ElMessage.success(`已关闭左侧 ${tabsToClose.length} 个标签页`)
+  ElMessage.success(`已关闭左侧 ${tabIndex} 个标签页`)
 }
-
 function closeNonCurrentTabs() {
   closeContextMenu()
   const tabId = contextMenu.value.tabId
-  const currentTab = editorStore.tabs.find(t => t.id === tabId)
-  if (!currentTab) return
-  const otherTabs = editorStore.tabs.filter(t => t.id !== tabId)
-  for (const tab of otherTabs) {
-    editorStore.closeTab(tab.id)
-  }
+  const others = editorStore.tabs.filter(t => t.id !== tabId)
+  for (const tab of others) editorStore.closeTab(tab.id)
   editorStore.activateTab(tabId)
-  ElMessage.success(`已关闭非当前 ${otherTabs.length} 个标签页`)
+  ElMessage.success(`已关闭非当前 ${others.length} 个标签页`)
 }
-
+function closeTabsToRight() {
+  closeContextMenu()
+  const tabId = contextMenu.value.tabId
+  const tabIndex = editorStore.tabs.findIndex(t => t.id === tabId)
+  if (tabIndex === -1) return
+  const right = editorStore.tabs.slice(tabIndex + 1)
+  for (const tab of right) editorStore.closeTab(tab.id)
+  ElMessage.success(`已关闭右侧 ${right.length} 个标签页`)
+}
+function closeAllTabs() {
+  closeContextMenu()
+  editorStore.closeAllTabs()
+  ElMessage.success('已关闭所有标签页')
+}
 async function saveAsTab() {
   closeContextMenu()
   const tab = editorStore.tabs.find(t => t.id === contextMenu.value.tabId)
@@ -169,12 +166,10 @@ async function saveAsTab() {
     ElMessage.error(`另存为失败: ${e}`)
   }
 }
-
 function openInNewWindow() {
   closeContextMenu()
   ElMessage.info('新窗口打开功能开发中')
 }
-
 async function showInExplorer() {
   closeContextMenu()
   const tab = editorStore.tabs.find(t => t.id === contextMenu.value.tabId)
@@ -190,7 +185,6 @@ async function showInExplorer() {
     ElMessage.info(`目录: ${tab.path}`)
   }
 }
-
 async function reloadAsText() {
   closeContextMenu()
   const tab = editorStore.tabs.find(t => t.id === contextMenu.value.tabId)
@@ -206,7 +200,6 @@ async function reloadAsText() {
     ElMessage.error(`重新加载失败: ${e}`)
   }
 }
-
 function reloadAsHex() {
   closeContextMenu()
   const tab = editorStore.tabs.find(t => t.id === contextMenu.value.tabId)
@@ -215,11 +208,9 @@ function reloadAsHex() {
     ElMessage.warning('该标签没有磁盘文件路径')
     return
   }
-  // HexViewer 已改为按页读取磁盘，无需预先加载内容，直接切视图即可
   tab.viewType = 'hex'
   ElMessage.success(`已以十六进制视图打开: ${tab.name}`)
 }
-
 function selectLeftCmpFile() {
   closeContextMenu()
   const tab = editorStore.tabs.find(t => t.id === contextMenu.value.tabId)
@@ -227,7 +218,6 @@ function selectLeftCmpFile() {
   document.dispatchEvent(new CustomEvent('select-left-cmp-file', { detail: tab.path }))
   ElMessage.success(`已选择左侧对比文件: ${tab.name}`)
 }
-
 function selectRightCmpFile() {
   closeContextMenu()
   const tab = editorStore.tabs.find(t => t.id === contextMenu.value.tabId)
@@ -235,38 +225,6 @@ function selectRightCmpFile() {
   document.dispatchEvent(new CustomEvent('select-right-cmp-file', { detail: tab.path }))
   ElMessage.success(`已选择右侧对比文件: ${tab.name}`)
 }
-
-function closeTabsToRight() {
-  closeContextMenu()
-  const tabId = contextMenu.value.tabId
-  const tabIndex = editorStore.tabs.findIndex(t => t.id === tabId)
-  if (tabIndex === -1) return
-
-  const tabsToClose = editorStore.tabs.slice(tabIndex + 1)
-  for (const tab of tabsToClose) {
-    editorStore.closeTab(tab.id)
-  }
-  ElMessage.success(`已关闭右侧 ${tabsToClose.length} 个标签页`)
-}
-
-function closeAllTabs() {
-  closeContextMenu()
-  editorStore.closeAllTabs()
-  ElMessage.success('已关闭所有标签页')
-}
-
-async function closeSavedTabs() {
-  closeContextMenu()
-  const savedTabs = editorStore.tabs.filter(t => !t.isDirty)
-  if (savedTabs.length === 0) {
-    ElMessage.info('没有已保存的标签页')
-    return
-  }
-  for (const tab of savedTabs) {
-    editorStore.closeTab(tab.id)
-  }
-}
-
 async function copyTabPath() {
   closeContextMenu()
   const tab = editorStore.tabs.find(t => t.id === contextMenu.value.tabId)
@@ -274,22 +232,16 @@ async function copyTabPath() {
     try {
       await navigator.clipboard.writeText(tab.path)
       ElMessage.success('路径已复制到剪贴板')
-    } catch (error) {
-      console.error('Failed to copy path:', error)
+    } catch {
       ElMessage.error('复制路径失败')
     }
   }
 }
-
-// Double-click to rename tab (renames the actual file)
 function startRenameFromMenu() {
   closeContextMenu()
   const tab = editorStore.tabs.find(t => t.id === contextMenu.value.tabId)
-  if (tab) {
-    startRename(tab)
-  }
+  if (tab) startRename(tab)
 }
-
 function startRename(tab: EditorTab) {
   if (!tab.path) return
   renamingTabId.value = tab.id
@@ -298,31 +250,24 @@ function startRename(tab: EditorTab) {
     if (renameInputEl) {
       renameInputEl.focus()
       const dotIndex = tab.name.lastIndexOf('.')
-      if (dotIndex > 0) {
-        renameInputEl.setSelectionRange(0, dotIndex)
-      } else {
-        renameInputEl.select()
-      }
+      if (dotIndex > 0) renameInputEl.setSelectionRange(0, dotIndex)
+      else renameInputEl.select()
     }
   })
 }
-
 async function confirmRename() {
   if (!renamingTabId.value) return
-
   const tab = editorStore.tabs.find(t => t.id === renamingTabId.value)
   if (!tab || !renameValue.value.trim() || renameValue.value.trim() === tab.name) {
     renamingTabId.value = null
     renameValue.value = ''
     return
   }
-
-  const parentPath = tab.path.split(/[/\\]/).slice(0, -1).join(tab.path.includes('\\') ? '\\' : '/')
-  const sep = tab.path.includes('\\') ? '\\' : '/'
+  const sep = tab.path!.includes('\\') ? '\\' : '/'
+  const parentPath = tab.path!.split(/[/\\]/).slice(0, -1).join(sep)
   const newPath = parentPath + sep + renameValue.value.trim()
-
   try {
-    await RenameFile(tab.path, newPath)
+    await RenameFile(tab.path!, newPath)
     editorStore.renameTab(tab.id, newPath)
     if (fileStore.currentDirectory) {
       const tree = await GetDirectoryTree(fileStore.currentDirectory)
@@ -330,20 +275,16 @@ async function confirmRename() {
     }
     ElMessage.success('重命名成功')
   } catch (error) {
-    console.error('Failed to rename:', error)
     ElMessage.error(`重命名失败: ${error}`)
   }
-
   renamingTabId.value = null
   renameValue.value = ''
 }
-
 function cancelRename() {
   renamingTabId.value = null
   renameValue.value = ''
 }
 
-// Tab bar action buttons
 async function handleCloseAllTabs() {
   if (editorStore.tabs.length === 0) return
   if (editorStore.hasUnsavedChanges) {
@@ -358,7 +299,6 @@ async function handleCloseAllTabs() {
   editorStore.closeAllTabs()
   ElMessage.success('已关闭所有标签页')
 }
-
 async function handleCloseOtherTabs() {
   const activeTab = editorStore.activeTab
   if (!activeTab) return
@@ -375,37 +315,26 @@ async function handleCloseOtherTabs() {
   editorStore.closeOtherTabs(activeTab.id)
   ElMessage.success('已关闭其他标签页')
 }
-
 async function handleCloseSavedTabs() {
   const savedTabs = editorStore.tabs.filter(t => !t.isDirty)
   if (savedTabs.length === 0) {
     ElMessage.info('没有已保存的标签页')
     return
   }
-  for (const tab of savedTabs) {
-    editorStore.closeTab(tab.id)
-  }
+  for (const tab of savedTabs) editorStore.closeTab(tab.id)
   ElMessage.success(`已关闭 ${savedTabs.length} 个已保存的标签页`)
 }
 
-// Click outside to close context menu
 function handleClickOutside() {
-  if (contextMenu.value.visible) {
-    closeContextMenu()
-  }
+  if (contextMenu.value.visible) closeContextMenu()
 }
 
-onMounted(() => {
-  document.addEventListener('click', handleClickOutside)
-})
-
-onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside)
-})
+onMounted(() => document.addEventListener('click', handleClickOutside))
+onUnmounted(() => document.removeEventListener('click', handleClickOutside))
 </script>
 
 <template>
-  <div class="tabbar flex items-stretch select-none">
+  <div class="et-chrome-row et-chrome-tab tabbar select-none">
     <!-- Tab list (scrollable) -->
     <div class="flex-1 flex items-stretch overflow-x-auto min-w-0">
       <div
@@ -414,9 +343,9 @@ onUnmounted(() => {
         draggable="true"
         class="tab"
         :class="{
-          'active': tab.id === editorStore.activeTabId,
-          'opacity-50': dragIndex === idx,
-          'drag-over': dragOverIndex === idx && dragIndex !== null && dragIndex !== idx,
+          'is-active': tab.id === editorStore.activeTabId,
+          'is-dragging': dragIndex === idx,
+          'is-drop-target': dragOverIndex === idx && dragIndex !== null && dragIndex !== idx,
         }"
         @click="selectTab(tab)"
         @contextmenu="handleContextMenu($event, tab)"
@@ -427,7 +356,7 @@ onUnmounted(() => {
         @drop="onDrop($event, idx)"
         @dragend="onDragEnd"
       >
-        <FileText class="w-3.5 h-3.5 flex-shrink-0 tab-icon" />
+        <FileText class="tab-icon" />
         <!-- Rename input -->
         <div v-if="renamingTabId === tab.id" class="flex-1 min-w-0" @click.stop>
           <input
@@ -439,34 +368,32 @@ onUnmounted(() => {
             @blur="confirmRename"
           />
         </div>
-        <span v-else class="text-[12px] truncate flex-1 leading-tight">{{ getTabTitle(tab) }}</span>
+        <span v-else class="tab-name">{{ tab.name }}</span>
+
+        <!-- 脏标记：右上角小圆点（与 StatusBar 统一） -->
+        <span v-if="tab.isDirty && renamingTabId !== tab.id" class="et-dot et-dot-warn tab-dirty-dot" />
+
         <button
-          class="tab-close flex-shrink-0"
+          class="et-icon-btn-sm tab-close"
           :title="`关闭 ${tab.name}`"
           @click="closeTab(tab, $event)"
         >
-          <X class="w-3.5 h-3.5" />
+          <X />
         </button>
       </div>
     </div>
 
-    <!-- Tab action buttons (right side, notepad-- style) -->
+    <!-- Tab action buttons (right side) -->
     <div v-if="editorStore.tabs.length > 0" class="tab-actions">
-      <el-tooltip content="关闭已保存的标签页" placement="bottom" :show-after="300">
-        <button class="tab-action tab-action--ok" @click="handleCloseSavedTabs">
-          <CheckCircle2 class="w-3.5 h-3.5" />
-        </button>
-      </el-tooltip>
-      <el-tooltip content="关闭其他标签页" placement="bottom" :show-after="300">
-        <button class="tab-action tab-action--warn" @click="handleCloseOtherTabs">
-          <XCircle class="w-3.5 h-3.5" />
-        </button>
-      </el-tooltip>
-      <el-tooltip content="关闭所有标签页" placement="bottom" :show-after="300">
-        <button class="tab-action tab-action--danger" @click="handleCloseAllTabs">
-          <XSquare class="w-3.5 h-3.5" />
-        </button>
-      </el-tooltip>
+      <button class="et-icon-btn-sm tab-action" title="关闭已保存的标签页" @click="handleCloseSavedTabs">
+        <CheckCircle2 />
+      </button>
+      <button class="et-icon-btn-sm tab-action" title="关闭其他标签页" @click="handleCloseOtherTabs">
+        <XCircle />
+      </button>
+      <button class="et-icon-btn-sm tab-action tab-action--danger" title="关闭所有标签页" @click="handleCloseAllTabs">
+        <XSquare />
+      </button>
     </div>
 
     <!-- Tab context menu -->
@@ -478,64 +405,64 @@ onUnmounted(() => {
         @click.stop
       >
         <div class="context-menu-item" @click="closeThisTab">
-          <X class="w-4 h-4 mr-2 text-gray-400" />
+          <X class="ctx-icon" />
           <span>关闭当前文档</span>
-          <span class="ml-auto text-xs text-gray-400">Ctrl+W</span>
+          <span class="ctx-key">Ctrl+W</span>
         </div>
         <div class="context-menu-item" @click="closeNonCurrentTabs">
-          <XCircle class="w-4 h-4 mr-2 text-orange-400" />
+          <XCircle class="ctx-icon" />
           <span>关闭非当前文档</span>
         </div>
         <div class="context-menu-item" @click="closeLeftAllTabs">
-          <ChevronsLeft class="w-4 h-4 mr-2 text-gray-400" />
+          <ChevronsLeft class="ctx-icon" />
           <span>关闭左侧全部</span>
         </div>
         <div class="context-menu-item" @click="closeTabsToRight">
-          <ChevronsRight class="w-4 h-4 mr-2 text-gray-400" />
+          <ChevronsRight class="ctx-icon" />
           <span>关闭右侧全部</span>
         </div>
         <div class="context-menu-item" @click="closeAllTabs">
-          <XSquare class="w-4 h-4 mr-2 text-red-400" />
+          <XSquare class="ctx-icon ctx-icon-danger" />
           <span>关闭所有</span>
         </div>
         <div class="context-menu-divider"></div>
         <div class="context-menu-item" @click="copyTabPath">
-          <Copy class="w-4 h-4 mr-2 text-gray-400" />
+          <Copy class="ctx-icon" />
           <span>复制文件路径</span>
         </div>
         <div class="context-menu-item" @click="startRenameFromMenu">
-          <Pencil class="w-4 h-4 mr-2 text-gray-400" />
+          <Pencil class="ctx-icon" />
           <span>重命名当前文档</span>
         </div>
         <div class="context-menu-item" @click="saveAsTab">
-          <Save class="w-4 h-4 mr-2 text-gray-400" />
+          <Save class="ctx-icon" />
           <span>当前文档另存为...</span>
         </div>
         <div class="context-menu-item is-disabled" @click="openInNewWindow">
-          <ExternalLink class="w-4 h-4 mr-2 text-gray-400" />
+          <ExternalLink class="ctx-icon" />
           <span>在新窗口中打开</span>
-          <span class="ml-auto text-xs text-gray-400">未实现</span>
+          <span class="ctx-key">未实现</span>
         </div>
         <div class="context-menu-item" @click="showInExplorer">
-          <FolderOpen class="w-4 h-4 mr-2 text-gray-400" />
+          <FolderOpen class="ctx-icon" />
           <span>在资源管理器中显示...</span>
         </div>
         <div class="context-menu-divider"></div>
         <div class="context-menu-item" @click="reloadAsText">
-          <FileCode class="w-4 h-4 mr-2 text-gray-400" />
+          <FileCode class="ctx-icon" />
           <span>以文本模式重载</span>
         </div>
         <div class="context-menu-item" @click="reloadAsHex">
-          <Binary class="w-4 h-4 mr-2 text-gray-400" />
+          <Binary class="ctx-icon" />
           <span>以二进制模式重载</span>
         </div>
         <div class="context-menu-divider"></div>
         <div class="context-menu-item" @click="selectLeftCmpFile">
-          <GitCompare class="w-4 h-4 mr-2 text-gray-400" />
+          <GitCompare class="ctx-icon" />
           <span>选择左侧对比文件</span>
         </div>
         <div class="context-menu-item" @click="selectRightCmpFile">
-          <GitCompare class="w-4 h-4 mr-2 text-blue-400" />
+          <GitCompare class="ctx-icon ctx-icon-accent" />
           <span>选择右侧对比文件</span>
         </div>
       </div>
@@ -545,36 +472,32 @@ onUnmounted(() => {
 
 <style scoped>
 .tabbar {
-  height: var(--et-h-tab);
-  background: var(--et-bg-sunken);
-  border-bottom: 1px solid var(--et-border);
+  /* .et-chrome-row.et-chrome-tab 已提供：height 30px + sunken bg + 下边框 */
 }
 
+/* —— Tab 主体 —— */
 .tab {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 6px;
-  height: var(--et-h-tab);
-  padding: 0 8px 0 10px;
-  min-width: 110px;
-  max-width: 190px;
+  gap: var(--et-space-1);
+  height: 100%;
+  padding: 0 6px 0 8px;
+  min-width: 90px;
+  max-width: 160px;
   cursor: pointer;
   border-right: 1px solid var(--et-border);
   color: var(--et-fg-muted);
-  transition: background .12s ease, color .12s ease;
+  transition: background-color 80ms ease, color 80ms ease;
 }
-
 .tab:last-child { border-right: none; }
 .tab:hover { background: var(--et-bg-hover); }
-
-.tab.active {
+.tab.is-active {
   background: var(--et-bg);
   color: var(--et-fg);
 }
-
 /* 激活指示：顶部 2px 主色条 */
-.tab.active::before {
+.tab.is-active::before {
   content: '';
   position: absolute;
   top: 0; left: 0; right: 0;
@@ -582,72 +505,96 @@ onUnmounted(() => {
   background: var(--et-accent);
 }
 
+.tab.is-dragging {
+  opacity: .4;
+  cursor: grabbing;
+}
 /* 拖拽插入位置提示 */
-.tab.drag-over { box-shadow: inset 2px 0 0 0 var(--et-accent); }
+.tab.is-drop-target {
+  box-shadow: inset 2px 0 0 0 var(--et-accent);
+}
 
-.tab-icon { color: var(--et-fg-subtle); }
-.tab.active .tab-icon { color: var(--et-accent); }
+.tab-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--et-fg-subtle);
+}
+.tab.is-active .tab-icon { color: var(--et-accent); }
 
-/* 关闭按钮：默认隐藏，悬停/激活时显现，减少视觉噪音 */
+.tab-name {
+  font-size: var(--et-text-sm);
+  line-height: var(--et-lh-tight);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 脏标记：右上小圆点 */
+.tab-dirty-dot {
+  margin: 0 2px;
+  flex-shrink: 0;
+}
+
+/* 关闭按钮：常显，hover 时高亮（Sublime 风） */
 .tab-close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   width: 18px;
   height: 18px;
-  border: none;
-  background: transparent;
-  border-radius: var(--et-radius-sm);
   color: var(--et-fg-subtle);
-  cursor: pointer;
-  flex-shrink: 0;
-  opacity: 0;
-  transition: opacity .12s ease, background .12s ease, color .12s ease;
 }
-.tab:hover .tab-close,
-.tab.active .tab-close { opacity: 1; }
-.tab-close:hover { background: var(--et-bg-active); color: var(--et-fg); }
+.tab-close:hover {
+  background: var(--et-bg-active);
+  color: var(--et-fg);
+}
 
+/* —— Tab action 按钮 —— */
 .tab-actions {
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 0 6px;
+  padding: 0 var(--et-space-1);
   border-left: 1px solid var(--et-border);
   flex-shrink: 0;
 }
-
 .tab-action {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border: none;
-  background: transparent;
-  border-radius: var(--et-radius-sm);
   color: var(--et-fg-subtle);
-  cursor: pointer;
-  transition: background .12s ease, color .12s ease;
 }
-.tab-action:hover { background: var(--et-bg-hover); }
-.tab-action--ok:hover { color: #22c55e; }
-.tab-action--warn:hover { color: #f59e0b; }
-.tab-action--danger:hover { color: #ef4444; }
+.tab-action:hover { color: var(--et-fg); }
+.tab-action--danger:hover { color: var(--et-danger); }
 
-/* 尚未实现的功能：与菜单栏保持一致，置灰并标注，而不是点了只弹一句提示 */
-.context-menu-item.is-disabled { color: var(--et-fg-subtle); cursor: default; }
-.context-menu-item.is-disabled:hover { background: transparent; }
+/* —— 右键菜单图标 / 快捷键（统一 token） —— */
+.ctx-icon {
+  width: 16px;
+  height: 16px;
+  margin-right: var(--et-space-2);
+  color: var(--et-fg-muted);
+  flex-shrink: 0;
+}
+.ctx-icon-accent { color: var(--et-accent); }
+.ctx-icon-danger  { color: var(--et-danger); }
+.ctx-key {
+  margin-left: auto;
+  padding-left: var(--et-space-3);
+  font-size: var(--et-text-xs);
+  color: var(--et-fg-subtle);
+  font-variant-numeric: tabular-nums;
+}
 
+/* —— 重命名输入 —— */
 .tab-rename-input {
   width: 100%;
   padding: 1px 4px;
-  font-size: 12px;
-  line-height: 1.4;
+  font-size: var(--et-text-sm);
+  line-height: var(--et-lh-tight);
   border: 1px solid var(--et-accent);
   border-radius: var(--et-radius-sm);
   outline: none;
   background: var(--et-bg);
   color: var(--et-fg);
 }
+
+/* 未实现项置灰（与菜单栏保持一致） */
+.context-menu-item.is-disabled { color: var(--et-fg-subtle); cursor: default; }
+.context-menu-item.is-disabled:hover { background: transparent; }
 </style>
