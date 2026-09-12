@@ -1,10 +1,14 @@
 <script lang="ts" setup>
+/**
+ * 格式化转换器 v2.1 — ModalOverlay 统一
+ */
 import { ref, computed, watch } from 'vue'
 import { useEditorStore, useFormatConverterStore } from '@/stores'
 import { Convert, JsonPathQuery, JsonToStruct, JsonStructuredDiff } from '../../wailsjs/go/main/App'
-import { X, ArrowRight, Copy, FileInput, FileOutput, RefreshCw, Search, FileCode, GitCompare } from 'lucide-vue-next'
+import { ArrowRight, Copy, FileInput, FileOutput, RefreshCw, Search, FileCode, GitCompare } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
 import type { tools } from '../../wailsjs/go/models'
+import ModalOverlay from './ModalOverlay.vue'
 
 const props = defineProps<{ visible: boolean }>()
 const emit = defineEmits(['close'])
@@ -267,45 +271,31 @@ function getDiffTypeClass(type: string): string {
 </script>
 
 <template>
-  <Teleport to="body">
-    <div
-      v-if="visible"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-      @click.self="emit('close')"
-    >
-      <div class="w-[900px] max-w-[95vw] h-[80vh] flex flex-col bg-white dark:bg-[#1e1e1e] rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <!-- Header -->
-        <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#252526] flex-shrink-0">
-          <div class="flex items-center gap-1">
-            <span class="font-semibold text-sm mr-3">格式工具</span>
-            <!-- 🆕 V2.0.0 Tab 切换 -->
-            <div class="flex gap-0.5 bg-gray-200 dark:bg-[#3c3c3c] rounded p-0.5">
-              <button
-                class="px-3 py-1 text-xs rounded transition-colors"
-                :class="activeToolTab === 'convert' ? 'bg-white dark:bg-[#1e1e1e] text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'"
-                @click="activeToolTab = 'convert'"
-              >格式转换</button>
-              <button
-                class="px-3 py-1 text-xs rounded transition-colors flex items-center gap-1"
-                :class="activeToolTab === 'jsonpath' ? 'bg-white dark:bg-[#1e1e1e] text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'"
-                @click="activeToolTab = 'jsonpath'"
-              ><Search class="w-3 h-3" /> JSONPath</button>
-              <button
-                class="px-3 py-1 text-xs rounded transition-colors flex items-center gap-1"
-                :class="activeToolTab === 'json-to-struct' ? 'bg-white dark:bg-[#1e1e1e] text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'"
-                @click="activeToolTab = 'json-to-struct'; inputText && doJsonToStruct()"
-              ><FileCode class="w-3 h-3" /> 转结构体</button>
-              <button
-                class="px-3 py-1 text-xs rounded transition-colors flex items-center gap-1"
-                :class="activeToolTab === 'json-diff' ? 'bg-white dark:bg-[#1e1e1e] text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'"
-                @click="activeToolTab = 'json-diff'"
-              ><GitCompare class="w-3 h-3" /> JSON Diff</button>
-            </div>
-          </div>
-          <button class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600" @click="emit('close')">
-            <X class="w-4 h-4" />
-          </button>
-        </div>
+  <ModalOverlay :visible="visible" title="格式工具" size="lg" @close="emit('close')">
+    <div class="fc">
+      <!-- Tab 切换（从原 header 移入 body） -->
+      <div class="fc-tabs">
+        <button
+          class="fc-tab"
+          :class="{ 'is-active': activeToolTab === 'convert' }"
+          @click="activeToolTab = 'convert'"
+        >格式转换</button>
+        <button
+          class="fc-tab"
+          :class="{ 'is-active': activeToolTab === 'jsonpath' }"
+          @click="activeToolTab = 'jsonpath'"
+        ><Search :size="12" :stroke-width="1.6" /> JSONPath</button>
+        <button
+          class="fc-tab"
+          :class="{ 'is-active': activeToolTab === 'json-to-struct' }"
+          @click="activeToolTab = 'json-to-struct'; inputText && doJsonToStruct()"
+        ><FileCode :size="12" :stroke-width="1.6" /> 转结构体</button>
+        <button
+          class="fc-tab"
+          :class="{ 'is-active': activeToolTab === 'json-diff' }"
+          @click="activeToolTab = 'json-diff'"
+        ><GitCompare :size="12" :stroke-width="1.6" /> JSON Diff</button>
+      </div>
 
         <!-- ========== 格式转换 Tab ========== -->
         <template v-if="activeToolTab === 'convert'">
@@ -523,7 +513,6 @@ function getDiffTypeClass(type: string): string {
             </div>
           </div>
         </template>
-      </div>
     </div>
-  </Teleport>
+  </ModalOverlay>
 </template>

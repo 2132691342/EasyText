@@ -1,76 +1,195 @@
 <script lang="ts" setup>
 /**
- * 通用模态浮层
+ * ModalOverlay v2.1 — 通用模态浮层
  *
- * 本轮修复：
- *  - ESC 关不掉：原来把 @keydown.escape 挂在 backdrop div 上，而该 div 没有
- *    tabindex、也不一定会获得焦点，键盘事件根本冒泡不到它。改为在 visible
- *    期间直接监听 document（并在卸载/关闭时移除）。
- *  - 样式令牌化：容器/头部/按钮原本是字面色 + html.dark 覆盖。
+ * 设计目标（M2 对话框统一）：
+ *  - 标准化 size: sm/md/lg/xl/full（也兼容旧 width/height）
+ *  - Esc 关闭（除非 closeOnEsc=false）
+ *  - 点遮罩关闭（除非 closeOnBackdrop=false）
+ *  - body scroll lock：打开时锁 body 滚动，防止背景跟随滚动
+ *  - focus trap：Tab 在 modal 内循环聚焦
+ *  - 80ms 进出动画（fade + scale）
+ *  - header actions slot（右侧自定义按钮）
+ *  - 关闭按钮用 Lucide X 替代 ✕ 字符
  */
-import { watch, onUnmounted } from 'vue'
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
+import { X } from 'lucide-vue-next'
 
-const props = defineProps<{
+export type ModalSize = 'sm' | 'md' | 'lg' | 'xl' | 'full'
+
+const props = withDefaults(defineProps<{
   visible: boolean
   title?: string
+  subtitle?: string
+  size?: ModalSize
+  /** 兼容旧 prop：自定义宽度（如 '720px'）。优先级高于 size。 */
   width?: string
+  /** 兼容旧 prop：自定义最大高度（如 '60vh'）。优先级高于 size。 */
   height?: string
-}>()
+  /** 是否响应 Esc 关闭（默认 true）。编辑器/正则测试器等可关闭。 */
+  closeOnEsc?: boolean
+  /** 是否响应点击遮罩关闭（默认 true）。 */
+  closeOnBackdrop?: boolean
+  /** 显示关闭按钮（默认 true） */
+  showClose?: boolean
+}>(), {
+  size: 'md',
+  closeOnEsc: true,
+  closeOnBackdrop: true,
+  showClose: true,
+})
 
 const emit = defineEmits<{
   (e: 'close'): void
 }>()
 
+const SIZE_WIDTH: Record<ModalSize, string> = {
+  sm: '420px',
+  md: '640px',
+  lg: '820px',
+  xl: '1080px',
+  full: '95vw',
+}
+const SIZE_MAX_HEIGHT: Record<ModalSize, string> = {
+  sm: '60vh',
+  md: '80vh',
+  lg: '85vh',
+  xl: '90vh',
+  full: '95vh',
+}
+
+const containerWidth = computed(() => props.width || SIZE_WIDTH[props.size])
+const containerMaxHeight = computed(() => props.height || SIZE_MAX_HEIGHT[props.size])
+
+const containerRef = ref<HTMLElement | null>(null)
+
+// —— 关闭动作（暴露给 backdrop / Esc / close button 共用） ——
+function requestClose() {
+  emit('close')
+}
+
+// —— Esc 全局监听 ——
 function onKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape') emit('close')
+  if (e.key === 'Escape') {
+    e.stopPropagation()
+    requestClose()
+    return
+  }
+  // Focus trap：Tab 在容器内循环
+  if (e.key === 'Tab' && containerRef.value) {
+    const focusables = containerRef.value.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    )
+    if (focusables.length === 0) {
+      e.preventDefault()
+      return
+    }
+    const first = focusables[0]
+    const last  = focusables[focusables.length - 1]
+    const active = document.activeElement as HTMLElement | null
+    if (e.shiftKey && active === first) {
+      e.preventDefault()
+      last.focus()
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault()
+      first.focus()
+    }
+  }
+}
+
+// —— 滚动锁 ——
+let prevOverflow: string | null = null
+function lockScroll() {
+  if (prevOverflow !== null) return
+  prevOverflow = document.body.style.overflow
+  document.body.style.overflow = 'hidden'
+}
+function unlockScroll() {
+  if (prevOverflow === null) return
+  document.body.style.overflow = prevOverflow
+  prevOverflow = null
 }
 
 watch(
   () => props.visible,
-  (v) => {
-    if (v) document.addEventListener('keydown', onKeydown)
-    else document.removeEventListener('keydown', onKeydown)
+  async (v) => {
+    if (v) {
+      document.addEventListener('keydown', onKeydown, true)
+      lockScroll()
+      // 打开后把焦点放到第一个可聚焦元素（或容器本身）
+      await nextTick()
+      const c = containerRef.value
+      if (c) {
+        const first = c.querySelector<HTMLElement>(
+          'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        )
+        ;(first ?? c).focus()
+      }
+    } else {
+      document.removeEventListener('keydown', onKeydown, true)
+      unlockScroll()
+    }
   },
   { immediate: true },
 )
 
-onUnmounted(() => document.removeEventListener('keydown', onKeydown))
+onUnmounted(() => {
+  document.removeEventListener('keydown', onKeydown, true)
+  unlockScroll()
+})
 </script>
 
 <template>
   <Teleport to="body">
-    <div
-      v-if="visible"
-      class="modal-backdrop"
-      @click.self="emit('close')"
-    >
+    <Transition name="et-modal">
       <div
-        class="modal-container"
-        :style="{ width: width || '640px', maxHeight: height || '80vh' }"
+        v-if="visible"
+        class="modal-backdrop"
+        @click.self="closeOnBackdrop && requestClose()"
+        @mousedown.self
       >
-        <!-- Header -->
-        <div v-if="title || $slots.header" class="modal-header">
-          <slot name="header">
-            <h2 class="modal-title">{{ title }}</h2>
-          </slot>
-          <button
-            class="modal-close-btn"
-            @click="emit('close')"
-            aria-label="关闭"
-          >&#10005;</button>
-        </div>
+        <div
+          ref="containerRef"
+          class="modal-container"
+          tabindex="-1"
+          role="dialog"
+          aria-modal="true"
+          :style="{ width: containerWidth, maxHeight: containerMaxHeight }"
+        >
+          <!-- Header -->
+          <div v-if="title || subtitle || $slots.header || showClose" class="modal-header">
+            <slot name="header">
+              <div class="modal-header-text">
+                <h2 v-if="title" class="modal-title">{{ title }}</h2>
+                <p v-if="subtitle" class="modal-subtitle">{{ subtitle }}</p>
+              </div>
+            </slot>
+            <div class="modal-header-actions">
+              <slot name="header-actions" />
+              <button
+                v-if="showClose"
+                class="modal-close-btn"
+                title="关闭 (Esc)"
+                aria-label="关闭"
+                @click="requestClose"
+              >
+                <X :size="14" :stroke-width="1.6" />
+              </button>
+            </div>
+          </div>
 
-        <!-- Body -->
-        <div class="modal-body">
-          <slot />
-        </div>
+          <!-- Body -->
+          <div class="modal-body">
+            <slot />
+          </div>
 
-        <!-- Footer -->
-        <div v-if="$slots.footer" class="modal-footer">
-          <slot name="footer" />
+          <!-- Footer -->
+          <div v-if="$slots.footer" class="modal-footer">
+            <slot name="footer" />
+          </div>
         </div>
       </div>
-    </div>
+    </Transition>
   </Teleport>
 </template>
 
@@ -84,6 +203,8 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
   justify-content: center;
   z-index: 1000;
   backdrop-filter: blur(2px);
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .modal-container {
@@ -95,54 +216,92 @@ onUnmounted(() => document.removeEventListener('keydown', onKeydown))
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  animation: modal-in .15s ease-out;
+  outline: none;
+  user-select: text;
+  -webkit-user-select: text;
+  min-width: 320px;
 }
 
 .modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 14px;
+  gap: var(--et-space-2);
+  padding: var(--et-space-2) var(--et-space-3);
   border-bottom: 1px solid var(--et-border);
   background: var(--et-bg-sunken);
-  border-radius: var(--et-radius) var(--et-radius) 0 0;
 }
-.modal-title { margin: 0; font-size: 13px; font-weight: 600; color: var(--et-fg); }
-
+.modal-header-text { min-width: 0; flex: 1; }
+.modal-title {
+  margin: 0;
+  font-size: var(--et-text-md);
+  font-weight: var(--et-fw-semibold);
+  color: var(--et-fg);
+  line-height: var(--et-lh-tight);
+}
+.modal-subtitle {
+  margin: 2px 0 0;
+  font-size: var(--et-text-xs);
+  color: var(--et-fg-muted);
+  line-height: var(--et-lh-tight);
+}
+.modal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--et-space-1);
+  flex-shrink: 0;
+}
 .modal-close-btn {
-  padding: 4px 8px;
-  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--et-h-control-sm);
+  height: var(--et-h-control-sm);
+  padding: 0;
+  border: 0;
   border-radius: var(--et-radius-sm);
   background: transparent;
   color: var(--et-fg-subtle);
-  font-size: 14px;
   cursor: pointer;
-  transition: background .15s ease, color .15s ease;
+  transition: background-color 80ms ease, color 80ms ease;
 }
-.modal-close-btn:hover { background: var(--et-bg-hover); color: var(--et-fg); }
+.modal-close-btn:hover {
+  background: var(--et-bg-hover);
+  color: var(--et-fg);
+}
 
 .modal-body {
   flex: 1;
   overflow: auto;
-  padding: 14px;
+  padding: var(--et-space-4);
 }
 
 .modal-footer {
-  padding: 10px 14px;
+  padding: var(--et-space-3) var(--et-space-4);
   border-top: 1px solid var(--et-border);
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  align-items: center;
+  gap: var(--et-space-2);
+  background: var(--et-bg-sunken);
 }
 
-@keyframes modal-in {
-  from {
-    opacity: 0;
-    transform: scale(.96) translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
+/* —— 进出动画（120ms） —— */
+.et-modal-enter-active,
+.et-modal-leave-active {
+  transition: opacity 120ms ease-out;
+}
+.et-modal-enter-active .modal-container,
+.et-modal-leave-active .modal-container {
+  transition: transform 120ms ease-out, opacity 120ms ease-out;
+}
+.et-modal-enter-from,
+.et-modal-leave-to {
+  opacity: 0;
+}
+.et-modal-enter-from .modal-container,
+.et-modal-leave-to .modal-container {
+  transform: scale(.96) translateY(-8px);
+  opacity: 0;
 }
 </style>

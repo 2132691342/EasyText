@@ -606,6 +606,107 @@ html.dark select:focus {
 .et-empty-title { font-size: var(--et-text-md); color: var(--et-fg-muted); font-weight: var(--et-fw-medium); }
 .et-empty-hint  { font-size: var(--et-text-xs); color: var(--et-fg-subtle); }
 
+/* ============================================================
+   v2.1 — 通用按钮 utility（ModalOverlay footer / 浮窗内部通用）
+   ------------------------------------------------------------
+   历史每个浮窗自己定义 .ndd-btn / .ndd-btn-small，使用字面色 + html.dark
+   覆盖。这里统一为 3 档：
+     - .et-btn       ：默认（28px 高，主用于浮窗 footer）
+     - .et-btn-sm    ：紧凑（22px 高，主用于浮窗内部工具栏）
+     - .et-btn-primary：主色按钮（ModalOverlay footer「保存」等用）
+   ============================================================ */
+.et-btn,
+.et-btn-sm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--et-space-1);
+  border: 1px solid var(--et-border);
+  background: var(--et-bg-elevated);
+  color: var(--et-fg);
+  border-radius: var(--et-radius-sm);
+  font-size: var(--et-text-md);
+  line-height: var(--et-lh-tight);
+  cursor: pointer;
+  transition: background-color 80ms ease, border-color 80ms ease, color 80ms ease;
+  padding: 0 var(--et-space-3);
+  white-space: nowrap;
+}
+.et-btn       { height: var(--et-h-control); }
+.et-btn-sm    { height: var(--et-h-control-sm); padding: 0 var(--et-space-2); font-size: var(--et-text-sm); }
+
+.et-btn:hover:not(:disabled),
+.et-btn-sm:hover:not(:disabled) {
+  background: var(--et-bg-hover);
+  border-color: var(--et-fg-subtle);
+}
+.et-btn:active:not(:disabled),
+.et-btn-sm:active:not(:disabled) {
+  background: var(--et-bg-active);
+}
+.et-btn:disabled,
+.et-btn-sm:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+}
+.et-btn:focus-visible,
+.et-btn-sm:focus-visible {
+  outline: 2px solid var(--et-accent);
+  outline-offset: -2px;
+}
+
+.et-btn-primary {
+  background: var(--et-accent);
+  border-color: var(--et-accent);
+  color: var(--et-accent-contrast);
+}
+.et-btn-primary:hover:not(:disabled) {
+  /* 简单提亮：直接覆盖为同色 + 滤镜；保持 token 单一来源 */
+  filter: brightness(1.08);
+}
+.et-btn-primary:disabled {
+  opacity: .4;
+}
+
+.et-btn-danger {
+  background: var(--et-bg-elevated);
+  border-color: var(--et-border);
+  color: var(--et-danger);
+}
+.et-btn-danger:hover:not(:disabled) {
+  background: var(--et-danger-bg);
+  border-color: var(--et-danger);
+}
+
+/* —— 通用表单控件 token 化（覆盖 Tailwind 字面色） —— */
+.et-input,
+.et-textarea,
+.et-select {
+  width: 100%;
+  padding: 4px 8px;
+  font-size: var(--et-text-md);
+  line-height: var(--et-lh-base);
+  background: var(--et-bg);
+  color: var(--et-fg);
+  border: 1px solid var(--et-border);
+  border-radius: var(--et-radius-sm);
+  outline: none;
+  transition: border-color 80ms ease, box-shadow 80ms ease;
+  font-family: inherit;
+}
+.et-textarea { resize: vertical; min-height: 60px; }
+.et-input:focus-visible,
+.et-textarea:focus-visible,
+.et-select:focus-visible {
+  border-color: var(--et-accent);
+  box-shadow: 0 0 0 1px var(--et-accent);
+}
+.et-input[readonly],
+.et-textarea[readonly] {
+  background: var(--et-bg-sunken);
+  color: var(--et-fg-muted);
+}
+
 /* --- Element Plus dark mode overrides --- */
 html.dark {
   --el-bg-color: #1e1e1e;

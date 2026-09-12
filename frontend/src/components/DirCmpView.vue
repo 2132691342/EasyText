@@ -1,11 +1,15 @@
 <script lang="ts" setup>
+/**
+ * 目录对比 v2.1 — ModalOverlay 统一
+ */
 import { ref } from 'vue'
 import { OpenDirectoryDialog, CompareDirectories } from '../../wailsjs/go/main/App'
-import { X, FolderOpen } from 'lucide-vue-next'
+import { FolderOpen } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
+import ModalOverlay from './ModalOverlay.vue'
 
 defineProps<{ visible: boolean }>()
-const emit = defineEmits(['close'])
+const emit = defineEmits<{ (e: 'close'): void }>()
 
 const leftDir = ref('')
 const rightDir = ref('')
@@ -18,7 +22,6 @@ async function pickLeft() {
 async function pickRight() {
   try { const p = await OpenDirectoryDialog(); if (p) { rightDir.value = p; runCompare() } } catch (e: any) { ElMessage.error('选择目录失败：' + (e?.message || '')) }
 }
-
 async function runCompare() {
   if (!leftDir.value || !rightDir.value) return
   loading.value = true
@@ -32,14 +35,13 @@ async function runCompare() {
     loading.value = false
   }
 }
-
-function rowClass(e: any) {
-  if (e.leftOnly) return 'bg-blue-50 dark:bg-blue-900/20'
-  if (e.rightOnly) return 'bg-green-50 dark:bg-green-900/20'
-  if (e.different) return 'bg-red-50 dark:bg-red-900/20'
+function rowClass(e: any): string {
+  if (e.leftOnly) return 'dc-row-l'
+  if (e.rightOnly) return 'dc-row-r'
+  if (e.different) return 'dc-row-d'
   return ''
 }
-function statusText(e: any) {
+function statusText(e: any): string {
   if (e.leftOnly) return '仅左侧'
   if (e.rightOnly) return '仅右侧'
   if (e.different) return '不同'
@@ -49,50 +51,97 @@ function statusText(e: any) {
 </script>
 
 <template>
-  <div v-if="visible" class="fixed inset-0 z-[9000] flex items-center justify-center bg-black/40" @click.self="emit('close')">
-    <div class="w-[900px] max-w-[92vw] h-[640px] max-h-[90vh] bg-white dark:bg-[#1e1e1e] rounded-lg shadow-2xl flex flex-col">
-      <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-        <span class="font-medium">目录对比</span>
-        <button class="text-gray-400 hover:text-gray-600" @click="emit('close')"><X :size="18" /></button>
+  <ModalOverlay :visible="visible" title="目录对比" size="lg" @close="emit('close')">
+    <div class="dc-inputs">
+      <div class="dc-dir">
+        <span class="dc-label">左侧</span>
+        <input v-model="leftDir" readonly class="et-input" placeholder="选择左侧目录" />
+        <button class="et-btn-sm" @click="pickLeft"><FolderOpen :size="14" :stroke-width="1.6" /></button>
       </div>
-
-      <div class="flex gap-2 px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-        <div class="flex-1 flex items-center gap-2">
-          <span class="text-sm text-gray-500">左侧：</span>
-          <input v-model="leftDir" readonly class="flex-1 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-transparent" placeholder="选择左侧目录" />
-          <button class="px-2 py-1 text-sm border rounded hover:bg-gray-100 dark:hover:bg-gray-700" @click="pickLeft"><FolderOpen :size="14" /></button>
-        </div>
-        <div class="flex-1 flex items-center gap-2">
-          <span class="text-sm text-gray-500">右侧：</span>
-          <input v-model="rightDir" readonly class="flex-1 px-2 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded bg-transparent" placeholder="选择右侧目录" />
-          <button class="px-2 py-1 text-sm border rounded hover:bg-gray-100 dark:hover:bg-gray-700" @click="pickRight"><FolderOpen :size="14" /></button>
-        </div>
-      </div>
-
-      <div class="flex-1 overflow-auto">
-        <table v-if="entries.length" class="w-full text-sm">
-          <thead class="sticky top-0 bg-gray-50 dark:bg-[#2a2a2a] text-gray-500">
-            <tr>
-              <th class="text-left px-3 py-2 font-normal">相对路径</th>
-              <th class="text-left px-3 py-2 font-normal w-20">状态</th>
-              <th class="text-right px-3 py-2 font-normal w-24">左大小</th>
-              <th class="text-right px-3 py-2 font-normal w-24">右大小</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="e in entries" :key="e.relPath" :class="rowClass(e)" class="border-b border-gray-100 dark:border-gray-800">
-              <td class="px-3 py-1.5 break-all">{{ e.relPath }}</td>
-              <td class="px-3 py-1.5">{{ statusText(e) }}</td>
-              <td class="px-3 py-1.5 text-right text-gray-500">{{ e.leftSize || '' }}</td>
-              <td class="px-3 py-1.5 text-right text-gray-500">{{ e.rightSize || '' }}</td>
-            </tr>
-          </tbody>
-        </table>
-        <div v-else-if="!loading" class="h-full flex items-center justify-center text-gray-400 text-sm">
-          请选择左右两个目录进行对比
-        </div>
-        <div v-else class="h-full flex items-center justify-center text-gray-400 text-sm">对比中...</div>
+      <div class="dc-dir">
+        <span class="dc-label">右侧</span>
+        <input v-model="rightDir" readonly class="et-input" placeholder="选择右侧目录" />
+        <button class="et-btn-sm" @click="pickRight"><FolderOpen :size="14" :stroke-width="1.6" /></button>
       </div>
     </div>
-  </div>
+
+    <div class="dc-body">
+      <table v-if="entries.length" class="dc-table">
+        <thead>
+          <tr>
+            <th class="dc-th dc-th-path">相对路径</th>
+            <th class="dc-th dc-th-status">状态</th>
+            <th class="dc-th dc-th-size">左大小</th>
+            <th class="dc-th dc-th-size">右大小</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="e in entries" :key="e.relPath" :class="['dc-tr', rowClass(e)]">
+            <td class="dc-td dc-td-path">{{ e.relPath }}</td>
+            <td class="dc-td">{{ statusText(e) }}</td>
+            <td class="dc-td dc-td-right">{{ e.leftSize || '' }}</td>
+            <td class="dc-td dc-td-right">{{ e.rightSize || '' }}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div v-else-if="!loading" class="et-empty">
+        <div class="et-empty-title">请选择左右两个目录进行对比</div>
+      </div>
+      <div v-else class="et-empty">
+        <div class="et-empty-title">对比中…</div>
+      </div>
+    </div>
+  </ModalOverlay>
 </template>
+
+<style scoped>
+.dc-inputs {
+  display: flex;
+  gap: var(--et-space-3);
+  padding-bottom: var(--et-space-3);
+  border-bottom: 1px solid var(--et-border);
+  margin-bottom: var(--et-space-3);
+}
+.dc-dir {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--et-space-2);
+  min-width: 0;
+}
+.dc-dir input { flex: 1; min-width: 0; }
+.dc-label {
+  width: 36px;
+  flex-shrink: 0;
+  font-size: var(--et-text-sm);
+  color: var(--et-fg-muted);
+}
+
+.dc-body {
+  min-height: 360px;
+  max-height: 60vh;
+  overflow: auto;
+  border: 1px solid var(--et-border);
+  border-radius: var(--et-radius-sm);
+}
+.dc-table { width: 100%; border-collapse: collapse; font-size: var(--et-text-sm); }
+.dc-table thead { background: var(--et-bg-sunken); position: sticky; top: 0; }
+.dc-th {
+  padding: 4px var(--et-space-3);
+  text-align: left;
+  font-weight: var(--et-fw-medium);
+  color: var(--et-fg-muted);
+  border-bottom: 1px solid var(--et-border);
+  font-size: var(--et-text-xs);
+}
+.dc-th-status { width: 80px; }
+.dc-th-size   { width: 96px; text-align: right; }
+.dc-tr { border-bottom: 1px solid var(--et-border); transition: background-color 80ms ease; }
+.dc-tr:hover { background: var(--et-accent-soft); }
+.dc-td { padding: 4px var(--et-space-3); color: var(--et-fg); }
+.dc-td-path { word-break: break-all; }
+.dc-td-right { text-align: right; color: var(--et-fg-muted); }
+.dc-row-l { background: var(--et-accent-soft); }
+.dc-row-r { background: var(--et-success-bg); }
+.dc-row-d { background: var(--et-danger-bg); }
+</style>

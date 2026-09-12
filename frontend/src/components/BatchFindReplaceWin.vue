@@ -1,7 +1,11 @@
 <script lang="ts" setup>
+/**
+ * 批量查找替换 v2.1 — ModalOverlay 统一
+ */
 import { ref, watch, computed } from 'vue'
 import { useEditorStore } from '@/stores'
 import { ElMessage } from 'element-plus'
+import ModalOverlay from './ModalOverlay.vue'
 
 const props = defineProps<{ visible: boolean }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
@@ -170,114 +174,185 @@ watch(() => props.visible, (v) => {
 </script>
 
 <template>
-  <Teleport to="body">
-    <div v-if="visible" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30" @click.self="emit('close')">
-      <div class="bg-white dark:bg-[#2d2d2d] border border-gray-300 dark:border-gray-600 rounded shadow-2xl w-[900px] flex flex-col" style="height: 700px;">
-        <div class="px-3 py-1.5 border-b border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-[#3c3c3c] text-sm font-medium text-gray-700 dark:text-gray-200 flex items-center justify-between">
-          <span>批量查找替换</span>
-          <button class="p-0.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded" @click="emit('close')">×</button>
+  <ModalOverlay :visible="visible" title="批量查找替换" size="lg" @close="emit('close')">
+    <div class="bfr">
+      <!-- 顶部双栏 -->
+      <div class="bfr-inputs">
+        <div class="bfr-col">
+          <label class="bfr-label">输入多个查找关键字，以空白字符分隔：</label>
+          <textarea
+            v-model="findKeywords"
+            class="et-textarea bfr-textarea"
+            placeholder="keyword1 keyword2 keyword3..."
+          />
         </div>
-        <div class="flex-1 flex flex-col p-3 gap-3 overflow-hidden">
-          <!-- 顶部双栏 -->
-          <div class="flex gap-3" style="height: 140px;">
-            <div class="flex-1 flex flex-col">
-              <label class="text-xs text-gray-600 dark:text-gray-300 mb-1">输入多个查找关键字，以空白字符分隔:</label>
-              <textarea
-                v-model="findKeywords"
-                class="flex-1 px-2 py-1 text-xs font-mono border border-gray-300 dark:border-gray-500 rounded bg-white dark:bg-[#1e1e1e] dark:text-gray-200 resize-none focus:outline-none focus:border-blue-400"
-                placeholder="keyword1 keyword2 keyword3..."
-              ></textarea>
-            </div>
-            <div class="flex-1 flex flex-col">
-              <label class="text-xs text-gray-600 dark:text-gray-300 mb-1">输入多个替换关键字，以空白字符分隔:</label>
-              <textarea
-                v-model="replaceKeywords"
-                class="flex-1 px-2 py-1 text-xs font-mono border border-gray-300 dark:border-gray-500 rounded bg-white dark:bg-[#1e1e1e] dark:text-gray-200 resize-none focus:outline-none focus:border-blue-400"
-                placeholder="replace1 replace2 replace3..."
-              ></textarea>
-            </div>
-          </div>
-          <!-- 中部表格 -->
-          <div class="flex-1 border border-gray-200 dark:border-gray-600 rounded overflow-hidden flex flex-col min-h-0">
-            <div class="overflow-auto flex-1">
-              <table class="w-full text-xs">
-                <thead class="bg-gray-50 dark:bg-[#2d2d2d] sticky top-0">
-                  <tr class="border-b border-gray-200 dark:border-gray-600">
-                    <th class="px-3 py-1.5 text-left text-gray-600 dark:text-gray-300 w-10">#</th>
-                    <th class="px-3 py-1.5 text-left text-gray-600 dark:text-gray-300">关键字 (Find)</th>
-                    <th class="px-3 py-1.5 text-left text-gray-600 dark:text-gray-300">替换 (Replace)</th>
-                    <th class="px-3 py-1.5 text-left text-gray-600 dark:text-gray-300 w-16">标记</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="(r, idx) in rows" :key="idx" class="border-b border-gray-100 dark:border-gray-700 hover:bg-blue-50 dark:hover:bg-[#3c3c3c]">
-                    <td class="px-3 py-1 text-gray-400">{{ idx + 1 }}</td>
-                    <td class="px-3 py-1 font-mono">{{ r.find }}</td>
-                    <td class="px-3 py-1 font-mono">{{ r.replace }}</td>
-                    <td class="px-3 py-1 text-center">
-                      <span v-if="r.marked" class="text-yellow-500">★</span>
-                      <span v-else class="text-gray-300">-</span>
-                    </td>
-                  </tr>
-                  <tr v-if="rows.length === 0">
-                    <td colspan="4" class="px-3 py-8 text-center text-gray-400">点击"刷新"按钮根据上方文本框生成规则</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-          <!-- 结果统计 -->
-          <div v-if="results.length > 0" class="text-xs text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 rounded p-2 max-h-32 overflow-auto">
-            <div class="font-medium mb-1">查找结果 (共 {{ stats.matched }} 处匹配，涉及 {{ stats.files }} 个文件):</div>
-            <div v-for="(r, idx) in results.slice(0, 50)" :key="idx" class="truncate">
-              <span class="text-blue-600 dark:text-blue-400">{{ r.file }}:{{ r.line }}</span>
-              <span class="text-gray-500 dark:text-gray-400 ml-2">[{{ r.keyword }}]</span>
-              <span class="text-gray-600 dark:text-gray-300 ml-1">{{ r.content }}</span>
-            </div>
-          </div>
-          <!-- 底部按钮 -->
-          <div class="flex justify-center gap-2">
-            <button class="ndd-btn" @click="fresh">刷新</button>
-            <button class="ndd-btn" @click="swap">交换</button>
-            <button class="ndd-btn-primary" @click="findAll">查找</button>
-            <button class="ndd-btn-primary" @click="replaceAll">替换</button>
-            <button class="ndd-btn" @click="mark">标记</button>
-            <button class="ndd-btn" @click="clearMark">清除标记</button>
-            <button class="ndd-btn" @click="importKeywords">导入</button>
-            <button class="ndd-btn" @click="exportKeywords">导出</button>
-            <button class="ndd-btn ml-4" @click="emit('close')">关闭</button>
-          </div>
+        <div class="bfr-col">
+          <label class="bfr-label">输入多个替换关键字，以空白字符分隔：</label>
+          <textarea
+            v-model="replaceKeywords"
+            class="et-textarea bfr-textarea"
+            placeholder="replace1 replace2 replace3..."
+          />
+        </div>
+      </div>
+
+      <!-- 中部表格 -->
+      <div class="bfr-table-wrap">
+        <div class="bfr-table-scroll">
+          <table class="bfr-table">
+            <thead>
+              <tr>
+                <th class="bfr-th bfr-th-num">#</th>
+                <th class="bfr-th">关键字 (Find)</th>
+                <th class="bfr-th">替换 (Replace)</th>
+                <th class="bfr-th bfr-th-mark">标记</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(r, idx) in rows" :key="idx" class="bfr-tr">
+                <td class="bfr-td bfr-td-num">{{ idx + 1 }}</td>
+                <td class="bfr-td bfr-mono">{{ r.find }}</td>
+                <td class="bfr-td bfr-mono">{{ r.replace }}</td>
+                <td class="bfr-td bfr-td-center">
+                  <span v-if="r.marked" class="bfr-mark-on">★</span>
+                  <span v-else class="bfr-mark-off">-</span>
+                </td>
+              </tr>
+              <tr v-if="rows.length === 0">
+                <td colspan="4" class="bfr-empty">点击「刷新」按钮根据上方文本框生成规则</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 结果统计 -->
+      <div v-if="results.length > 0" class="bfr-results">
+        <div class="bfr-results-head">查找结果（共 {{ stats.matched }} 处匹配，涉及 {{ stats.files }} 个文件）：</div>
+        <div v-for="(r, idx) in results.slice(0, 50)" :key="idx" class="bfr-result-row">
+          <span class="bfr-result-loc">{{ r.file }}:{{ r.line }}</span>
+          <span class="bfr-result-kw">[{{ r.keyword }}]</span>
+          <span class="bfr-result-content">{{ r.content }}</span>
         </div>
       </div>
     </div>
-  </Teleport>
+
+    <template #footer>
+      <div class="bfr-footer">
+        <button class="et-btn-sm" @click="fresh">刷新</button>
+        <button class="et-btn-sm" @click="swap">交换</button>
+        <button class="et-btn-sm et-btn-primary" @click="findAll">查找</button>
+        <button class="et-btn-sm et-btn-primary" @click="replaceAll">替换</button>
+        <button class="et-btn-sm" @click="mark">标记</button>
+        <button class="et-btn-sm" @click="clearMark">清除标记</button>
+        <button class="et-btn-sm" @click="importKeywords">导入</button>
+        <button class="et-btn-sm" @click="exportKeywords">导出</button>
+        <button class="et-btn-sm" style="margin-left: var(--et-space-3)" @click="emit('close')">关闭</button>
+      </div>
+    </template>
+  </ModalOverlay>
 </template>
 
 <style scoped>
-.ndd-btn {
-  padding: 4px 12px;
-  font-size: 12px;
-  border: 1px solid #d1d5db;
-  background: #fff;
-  color: #374151;
-  border-radius: 3px;
-  cursor: pointer;
+.bfr {
+  display: flex;
+  flex-direction: column;
+  gap: var(--et-space-3);
+  min-height: 540px;
 }
-.ndd-btn:hover { background: #f3f4f6; }
-.ndd-btn-primary {
-  padding: 4px 12px;
-  font-size: 12px;
-  border: 1px solid #3b82f6;
-  background: #3b82f6;
-  color: #fff;
-  border-radius: 3px;
-  cursor: pointer;
+.bfr-inputs {
+  display: flex;
+  gap: var(--et-space-3);
+  height: 140px;
 }
-.ndd-btn-primary:hover { background: #2563eb; }
-html.dark .ndd-btn {
-  background: #3c3c3c;
-  color: #e0e0e0;
-  border-color: #555;
+.bfr-col { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.bfr-label {
+  font-size: var(--et-text-xs);
+  color: var(--et-fg-muted);
+  margin-bottom: var(--et-space-1);
 }
-html.dark .ndd-btn:hover { background: #4c4c4c; }
+.bfr-textarea {
+  flex: 1;
+  font-family: var(--editor-font-family, 'Consolas', monospace);
+  font-size: var(--et-text-sm);
+  min-height: 0;
+}
+
+.bfr-table-wrap {
+  flex: 1;
+  border: 1px solid var(--et-border);
+  border-radius: var(--et-radius-sm);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.bfr-table-scroll { overflow: auto; flex: 1; }
+.bfr-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--et-text-xs);
+}
+.bfr-table thead { background: var(--et-bg-sunken); position: sticky; top: 0; }
+.bfr-th {
+  padding: 6px var(--et-space-3);
+  text-align: left;
+  font-weight: var(--et-fw-medium);
+  color: var(--et-fg-muted);
+  border-bottom: 1px solid var(--et-border);
+}
+.bfr-th-num { width: 40px; }
+.bfr-th-mark { width: 64px; }
+.bfr-tr {
+  border-bottom: 1px solid var(--et-border);
+  transition: background-color 80ms ease;
+}
+.bfr-tr:hover { background: var(--et-accent-soft); }
+.bfr-td {
+  padding: 4px var(--et-space-3);
+  color: var(--et-fg);
+}
+.bfr-td-num { color: var(--et-fg-subtle); }
+.bfr-td-center { text-align: center; }
+.bfr-mono {
+  font-family: var(--editor-font-family, 'Consolas', monospace);
+}
+.bfr-mark-on { color: var(--et-warn); }
+.bfr-mark-off { color: var(--et-fg-subtle); }
+.bfr-empty {
+  padding: var(--et-space-5);
+  text-align: center;
+  color: var(--et-fg-subtle);
+}
+
+.bfr-results {
+  font-size: var(--et-text-xs);
+  border: 1px solid var(--et-border);
+  border-radius: var(--et-radius-sm);
+  padding: var(--et-space-2);
+  max-height: 128px;
+  overflow: auto;
+}
+.bfr-results-head {
+  font-weight: var(--et-fw-medium);
+  margin-bottom: var(--et-space-1);
+  color: var(--et-fg);
+}
+.bfr-result-row {
+  display: flex;
+  gap: var(--et-space-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bfr-result-loc { color: var(--et-accent); flex-shrink: 0; }
+.bfr-result-kw  { color: var(--et-fg-muted); flex-shrink: 0; }
+.bfr-result-content { color: var(--et-fg); overflow: hidden; text-overflow: ellipsis; }
+
+.bfr-footer {
+  display: flex;
+  gap: var(--et-space-1);
+  flex-wrap: wrap;
+  align-items: center;
+}
 </style>

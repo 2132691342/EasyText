@@ -1,10 +1,14 @@
 <script lang="ts" setup>
+/**
+ * 批量编码转换 v2.1 — ModalOverlay 统一
+ */
 import { ref, watch } from 'vue'
 import {
   OpenDirectoryDialog, GetDirectoryTree, ReadFileBytes, SaveFileBytes,
   DetectEncoding, ConvertEncoding,
 } from '../../wailsjs/go/main/App'
 import { ElMessage } from 'element-plus'
+import ModalOverlay from './ModalOverlay.vue'
 
 const props = defineProps<{ visible: boolean }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
@@ -168,109 +172,168 @@ watch(() => props.visible, (v) => {
     extFilter.value = 'all'
   }
 })
+
+function ecResultClass(r: string): string {
+  if (r === '成功') return 'ec-ok'
+  if (r.startsWith('失败')) return 'ec-fail'
+  return 'ec-pend'
+}
 </script>
 
 <template>
-  <Teleport to="body">
-    <div v-if="visible" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30" @click.self="emit('close')">
-      <div class="bg-white dark:bg-[#2d2d2d] border border-gray-300 dark:border-gray-600 rounded shadow-2xl w-[960px] flex flex-col" style="height: 620px;">
-        <div class="px-3 py-1.5 border-b border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-[#3c3c3c] text-sm font-medium text-gray-700 dark:text-gray-200 flex items-center justify-between">
-          <span>批量编码转换</span>
-          <button class="p-0.5 hover:bg-gray-200 dark:hover:bg-gray-600 rounded" @click="emit('close')">×</button>
+  <ModalOverlay :visible="visible" title="批量编码转换" size="lg" @close="emit('close')">
+    <div class="ec">
+      <!-- 文件列表 -->
+      <div class="ec-table-wrap">
+        <div class="ec-table-scroll">
+          <table class="ec-table">
+            <thead>
+              <tr>
+                <th class="ec-th ec-th-path">文件路径</th>
+                <th class="ec-th ec-th-size">大小</th>
+                <th class="ec-th ec-th-enc">原编码</th>
+                <th class="ec-th ec-th-enc">目标编码</th>
+                <th class="ec-th ec-th-result">转换结果</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(f, idx) in files" :key="idx" class="ec-tr">
+                <td class="ec-td ec-td-path" :title="f.path">{{ f.path }}</td>
+                <td class="ec-td">{{ f.size }}</td>
+                <td class="ec-td">{{ f.fileCode }}</td>
+                <td class="ec-td">{{ f.convertCode }}</td>
+                <td class="ec-td ec-td-result" :class="ecResultClass(f.result)">{{ f.result }}</td>
+              </tr>
+              <tr v-if="files.length === 0">
+                <td colspan="5" class="ec-empty">点击「选择目录」开始扫描文件</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
-        <div class="flex-1 flex flex-col p-3 gap-3 overflow-hidden">
-          <!-- 文件列表 -->
-          <div class="flex-1 border border-gray-200 dark:border-gray-600 rounded overflow-hidden flex flex-col min-h-0">
-            <div class="overflow-auto">
-              <table class="w-full text-xs">
-                <thead class="bg-gray-50 dark:bg-[#2d2d2d] sticky top-0">
-                  <tr class="border-b border-gray-200 dark:border-gray-600">
-                    <th class="px-3 py-1.5 text-left text-gray-600 dark:text-gray-300">文件路径</th>
-                    <th class="px-3 py-1.5 text-left text-gray-600 dark:text-gray-300 w-20">大小</th>
-                    <th class="px-3 py-1.5 text-left text-gray-600 dark:text-gray-300 w-24">原编码</th>
-                    <th class="px-3 py-1.5 text-left text-gray-600 dark:text-gray-300 w-24">目标编码</th>
-                    <th class="px-3 py-1.5 text-left text-gray-600 dark:text-gray-300 w-32">转换结果</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="(f, idx) in files" :key="idx" class="border-b border-gray-100 dark:border-gray-700 hover:bg-blue-50 dark:hover:bg-[#3c3c3c]">
-                    <td class="px-3 py-1 truncate" :title="f.path">{{ f.path }}</td>
-                    <td class="px-3 py-1">{{ f.size }}</td>
-                    <td class="px-3 py-1">{{ f.fileCode }}</td>
-                    <td class="px-3 py-1">{{ f.convertCode }}</td>
-                    <td class="px-3 py-1" :class="f.result === '成功' ? 'text-green-600' : f.result.startsWith('失败') ? 'text-red-600' : 'text-gray-500'">{{ f.result }}</td>
-                  </tr>
-                  <tr v-if="files.length === 0">
-                    <td colspan="5" class="px-3 py-8 text-center text-gray-400">点击"选择目录"开始扫描文件</td>
-                  </tr>
-                </tbody>
-              </table>
+      </div>
+
+      <!-- 底部：选项 + 按钮 + 日志 -->
+      <div class="ec-bottom">
+        <div class="ec-bottom-left">
+          <fieldset class="ec-field">
+            <legend>转换选项</legend>
+            <div class="ec-row">
+              <span class="ec-label">转换到编码</span>
+              <select v-model="targetCode" class="et-select">
+                <option v-for="c in targetCodeOptions" :key="c.value" :value="c.value">{{ c.label }}</option>
+              </select>
             </div>
+            <div class="ec-row">
+              <span class="ec-label">文件扩展名</span>
+              <select v-model="extFilter" class="et-select">
+                <option v-for="o in extOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
+              </select>
+            </div>
+          </fieldset>
+          <div class="ec-actions">
+            <button class="et-btn-sm" :disabled="loading" @click="selectDir">{{ loading ? '扫描中…' : '选择目录' }}</button>
+            <button class="et-btn-sm et-btn-primary" :disabled="loading || files.length === 0" @click="startConvert">开始</button>
           </div>
-          <!-- 底部 -->
-          <div class="flex gap-3" style="height: 200px;">
-            <!-- 左：选项 + 按钮 -->
-            <div class="w-2/3 flex flex-col gap-2">
-              <fieldset class="border border-gray-300 dark:border-gray-600 rounded p-2">
-                <legend class="text-xs text-gray-600 dark:text-gray-300 px-1">转换选项</legend>
-                <div class="flex items-center gap-2 mb-2">
-                  <label class="text-xs text-gray-600 dark:text-gray-300 w-20">转换到编码:</label>
-                  <select v-model="targetCode" class="flex-1 px-2 py-1 text-xs border border-gray-300 dark:border-gray-500 rounded bg-white dark:bg-[#1e1e1e] dark:text-gray-200">
-                    <option v-for="c in targetCodeOptions" :key="c.value" :value="c.value">{{ c.label }}</option>
-                  </select>
-                </div>
-                <div class="flex items-center gap-2">
-                  <label class="text-xs text-gray-600 dark:text-gray-300 w-20">文件扩展名:</label>
-                  <select v-model="extFilter" class="flex-1 px-2 py-1 text-xs border border-gray-300 dark:border-gray-500 rounded bg-white dark:bg-[#1e1e1e] dark:text-gray-200">
-                    <option v-for="o in extOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
-                  </select>
-                </div>
-              </fieldset>
-              <div class="flex justify-center gap-2">
-                <button class="ndd-btn" :disabled="loading" @click="selectDir">{{ loading ? '扫描中...' : '选择目录' }}</button>
-                <button class="ndd-btn-primary" :disabled="loading || files.length === 0" @click="startConvert">开始</button>
-                <button class="ndd-btn" @click="emit('close')">关闭</button>
-              </div>
-            </div>
-            <!-- 右：日志 -->
-            <div class="flex-1 flex flex-col">
-              <label class="text-xs text-gray-600 dark:text-gray-300 mb-1">日志:</label>
-              <textarea v-model="logText" readonly class="flex-1 px-2 py-1 text-xs font-mono border border-gray-300 dark:border-gray-500 rounded bg-gray-50 dark:bg-[#1e1e1e] dark:text-gray-200 resize-none"></textarea>
-            </div>
-          </div>
+        </div>
+        <div class="ec-bottom-right">
+          <label class="ec-label">日志</label>
+          <textarea v-model="logText" readonly class="et-textarea ec-log" />
         </div>
       </div>
     </div>
-  </Teleport>
+
+    <template #footer>
+      <button class="et-btn" @click="emit('close')">关闭</button>
+    </template>
+  </ModalOverlay>
 </template>
 
 <style scoped>
-.ndd-btn {
-  padding: 4px 16px;
-  font-size: 12px;
-  border: 1px solid #d1d5db;
-  background: #fff;
-  color: #374151;
-  border-radius: 3px;
-  cursor: pointer;
+.ec {
+  display: flex;
+  flex-direction: column;
+  gap: var(--et-space-3);
+  min-height: 500px;
 }
-.ndd-btn:hover { background: #f3f4f6; }
-.ndd-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.ndd-btn-primary {
-  padding: 4px 16px;
-  font-size: 12px;
-  border: 1px solid #3b82f6;
-  background: #3b82f6;
-  color: #fff;
-  border-radius: 3px;
-  cursor: pointer;
+.ec-table-wrap {
+  flex: 1;
+  border: 1px solid var(--et-border);
+  border-radius: var(--et-radius-sm);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
-.ndd-btn-primary:hover { background: #2563eb; }
-.ndd-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-html.dark .ndd-btn {
-  background: #3c3c3c;
-  color: #e0e0e0;
-  border-color: #555;
+.ec-table-scroll { overflow: auto; flex: 1; }
+.ec-table { width: 100%; border-collapse: collapse; font-size: var(--et-text-sm); }
+.ec-table thead { background: var(--et-bg-sunken); position: sticky; top: 0; }
+.ec-th {
+  padding: 4px var(--et-space-3);
+  text-align: left;
+  font-weight: var(--et-fw-medium);
+  color: var(--et-fg-muted);
+  border-bottom: 1px solid var(--et-border);
+  font-size: var(--et-text-xs);
 }
-html.dark .ndd-btn:hover { background: #4c4c4c; }
+.ec-th-size   { width: 80px; }
+.ec-th-enc    { width: 96px; }
+.ec-th-result { width: 128px; }
+.ec-tr { border-bottom: 1px solid var(--et-border); transition: background-color 80ms ease; }
+.ec-tr:hover { background: var(--et-accent-soft); }
+.ec-td {
+  padding: 4px var(--et-space-3);
+  color: var(--et-fg);
+}
+.ec-td-path { font-family: var(--editor-font-family, 'Consolas', monospace); }
+.ec-td-result.ec-ok    { color: var(--et-success); }
+.ec-td-result.ec-fail  { color: var(--et-danger); }
+.ec-td-result.ec-pend  { color: var(--et-fg-muted); }
+.ec-empty {
+  padding: var(--et-space-5);
+  text-align: center;
+  color: var(--et-fg-subtle);
+}
+
+.ec-bottom {
+  display: flex;
+  gap: var(--et-space-3);
+  height: 200px;
+}
+.ec-bottom-left  { width: 66.6667%; display: flex; flex-direction: column; gap: var(--et-space-2); }
+.ec-bottom-right { flex: 1; display: flex; flex-direction: column; }
+.ec-field {
+  border: 1px solid var(--et-border);
+  border-radius: var(--et-radius-sm);
+  padding: var(--et-space-2);
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--et-space-1);
+}
+.ec-field legend {
+  padding: 0 var(--et-space-1);
+  font-size: var(--et-text-xs);
+  color: var(--et-fg-muted);
+  font-weight: var(--et-fw-medium);
+}
+.ec-row { display: flex; align-items: center; gap: var(--et-space-2); }
+.ec-label {
+  width: 80px;
+  flex-shrink: 0;
+  font-size: var(--et-text-xs);
+  color: var(--et-fg-muted);
+}
+.ec-actions {
+  display: flex;
+  justify-content: center;
+  gap: var(--et-space-2);
+  margin-top: var(--et-space-1);
+}
+.ec-log {
+  flex: 1;
+  font-family: var(--editor-font-family, 'Consolas', monospace);
+  font-size: var(--et-text-sm);
+  margin-top: var(--et-space-1);
+  min-height: 0;
+}
 </style>

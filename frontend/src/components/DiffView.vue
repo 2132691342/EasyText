@@ -327,111 +327,89 @@ function escapeHtml(s: string): string {
 </script>
 
 <template>
-  <div v-if="visible" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-    <div class="bg-white dark:bg-[#1e1e1e] rounded-lg shadow-2xl w-[90vw] h-[85vh] flex flex-col overflow-hidden">
-      <!-- Header -->
-      <div class="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#252526]">
-        <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-200">文档对比 (Diff)</h2>
-        <div class="flex items-center gap-2">
-          <!-- 🆕 V2.0.0 视图模式切换 -->
-          <button
-            class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-xs"
-            :class="viewMode === 'side' ? 'text-blue-500' : 'text-gray-400'"
-            title="左右分栏"
-            @click="viewMode = 'side'"
-          >
-            <Columns class="w-3.5 h-3.5" />
-          </button>
-          <button
-            class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-xs"
-            :class="viewMode === 'unified' ? 'text-blue-500' : 'text-gray-400'"
-            title="统一视图"
-            @click="viewMode = 'unified'"
-          >
-            <Rows class="w-3.5 h-3.5" />
-          </button>
-          <!-- 🆕 V2.0.0 字符级高亮开关 -->
-          <button
-            class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-xs"
-            :class="showCharDiff ? 'text-orange-500' : 'text-gray-400'"
-            title="字符级差异高亮"
-            @click="showCharDiff = !showCharDiff"
-          >
-            <Highlighter class="w-3.5 h-3.5" />
-          </button>
-          <!-- 🆕 导出 -->
-          <button
-            class="flex items-center gap-1 px-2 py-0.5 text-xs rounded bg-gray-100 dark:bg-[#3c3c3c] hover:bg-gray-200 dark:hover:bg-[#4a4a4a]"
-            title="导出 HTML"
-            @click="exportDiff"
-          >
-            <Download class="w-3 h-3" />
-          </button>
-          <span v-if="diffBlocks.length > 0" class="text-xs text-gray-500 dark:text-gray-400">
-            <span class="text-green-600 dark:text-green-400">+{{ diffStats.added }}</span>
-            <span class="mx-1 text-red-600 dark:text-red-400">-{{ diffStats.removed }}</span>
-            <span class="text-gray-400">{{ changedBlocks.length }} 处差异</span>
-          </span>
-          <!-- Navigate diffs -->
-          <button
-            class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-40"
-            title="上一处差异"
-            :disabled="changedBlocks.length === 0"
-            @click="prevDiff"
-          >
-            <ChevronLeft class="w-4 h-4" />
-          </button>
-          <button
-            class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-40"
-            title="下一处差异"
-            :disabled="changedBlocks.length === 0"
-            @click="nextDiff"
-          >
-            <ChevronRight class="w-4 h-4" />
-          </button>
-          <button class="p-1 rounded hover:bg-gray-100 dark:hover:bg-[#3c3c3c]" @click="emit('close')">
-            <X class="w-4 h-4" />
-          </button>
-        </div>
-      </div>
+  <ModalOverlay :visible="visible" title="文档对比 (Diff)" size="full" @close="emit('close')">
+    <template #header-actions>
+      <button
+        class="dv-header-btn"
+        :class="{ 'is-on': viewMode === 'side' }"
+        title="左右分栏"
+        @click="viewMode = 'side'"
+      >
+        <Columns :size="14" :stroke-width="1.6" />
+      </button>
+      <button
+        class="dv-header-btn"
+        :class="{ 'is-on': viewMode === 'unified' }"
+        title="统一视图"
+        @click="viewMode = 'unified'"
+      >
+        <Rows :size="14" :stroke-width="1.6" />
+      </button>
+      <button
+        class="dv-header-btn"
+        :class="{ 'is-warn': showCharDiff }"
+        title="字符级差异高亮"
+        @click="showCharDiff = !showCharDiff"
+      >
+        <Highlighter :size="14" :stroke-width="1.6" />
+      </button>
+      <button class="dv-header-action" title="导出 HTML" @click="exportDiff">
+        <Download :size="12" :stroke-width="1.6" />
+        导出
+      </button>
+      <span v-if="diffBlocks.length > 0" class="dv-stats">
+        <span class="dv-stat-add">+{{ diffStats.added }}</span>
+        <span class="dv-stat-rm">-{{ diffStats.removed }}</span>
+        <span>{{ changedBlocks.length }} 处差异</span>
+      </span>
+      <button
+        class="dv-header-btn"
+        title="上一处差异"
+        :disabled="changedBlocks.length === 0"
+        @click="prevDiff"
+      >
+        <ChevronLeft :size="14" :stroke-width="1.6" />
+      </button>
+      <button
+        class="dv-header-btn"
+        title="下一处差异"
+        :disabled="changedBlocks.length === 0"
+        @click="nextDiff"
+      >
+        <ChevronRight :size="14" :stroke-width="1.6" />
+      </button>
+    </template>
 
+    <div class="dv">
       <!-- File selectors -->
-      <div class="flex border-b border-gray-200 dark:border-gray-700">
-        <div class="flex-1 flex items-center gap-2 px-3 py-2 border-r border-gray-200 dark:border-gray-700">
-          <button
-            class="flex items-center gap-1 px-2 py-1 text-xs rounded bg-gray-100 dark:bg-[#3c3c3c] hover:bg-gray-200 dark:hover:bg-[#4a4a4a]"
-            @click="openLeftFile"
-          >
-            <FolderOpen class="w-3 h-3" />
+      <div class="dv-files">
+        <div class="dv-file">
+          <button class="et-btn-sm" @click="openLeftFile">
+            <FolderOpen :size="12" :stroke-width="1.6" />
             打开
           </button>
-          <span class="text-xs text-gray-600 dark:text-gray-300 truncate flex-1 font-mono">{{ leftLabel }}</span>
+          <span class="dv-file-label">{{ leftLabel }}</span>
         </div>
-        <div class="flex-1 flex items-center gap-2 px-3 py-2">
-          <button
-            class="flex items-center gap-1 px-2 py-1 text-xs rounded bg-gray-100 dark:bg-[#3c3c3c] hover:bg-gray-200 dark:hover:bg-[#4a4a4a]"
-            @click="openRightFile"
-          >
-            <FolderOpen class="w-3 h-3" />
+        <div class="dv-file">
+          <button class="et-btn-sm" @click="openRightFile">
+            <FolderOpen :size="12" :stroke-width="1.6" />
             打开
           </button>
-          <span class="text-xs text-gray-600 dark:text-gray-300 truncate flex-1 font-mono">{{ rightLabel }}</span>
+          <span class="dv-file-label">{{ rightLabel }}</span>
         </div>
       </div>
 
       <!-- Empty state -->
-      <div v-if="!leftContent && !rightContent" class="flex-1 flex items-center justify-center text-gray-400 dark:text-gray-500">
-        <div class="text-center">
-          <div class="text-4xl mb-3">⇄</div>
-          <p class="text-sm">请选择要对比的两个文件</p>
-        </div>
+      <div v-if="!leftContent && !rightContent" class="dv-empty">
+        <div class="dv-empty-icon">⇄</div>
+        <p>请选择要对比的两个文件</p>
       </div>
 
       <!-- Loading -->
-      <div v-else-if="isComparing" class="flex-1 flex items-center justify-center">
-        <svg class="animate-spin h-6 w-6 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+      <div v-else-if="isComparing" class="dv-loading">
+        <svg class="dv-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" class="dv-spin-track"></circle>
+          <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
         </svg>
       </div>
 
@@ -516,9 +494,104 @@ function escapeHtml(s: string): string {
         </table>
       </div>
     </div>
-  </div>
+  </ModalOverlay>
 </template>
 
+<style scoped>
+/* ===== v2.1 — token 化的 DiffView 容器 ===== */
+.dv {
+  display: flex;
+  flex-direction: column;
+  height: calc(85vh - 100px);
+  min-height: 400px;
+}
+.dv-files {
+  display: flex;
+  border-bottom: 1px solid var(--et-border);
+  flex-shrink: 0;
+}
+.dv-file {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--et-space-2);
+  padding: var(--et-space-2) var(--et-space-3);
+}
+.dv-file + .dv-file { border-left: 1px solid var(--et-border); }
+.dv-file-label {
+  flex: 1;
+  font-size: var(--et-text-sm);
+  color: var(--et-fg-muted);
+  font-family: var(--editor-font-family, 'Consolas', monospace);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dv-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--et-fg-subtle);
+}
+.dv-empty-icon {
+  font-size: 48px;
+  margin-bottom: var(--et-space-3);
+}
+.dv-loading {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--et-accent);
+}
+.dv-spin { width: 24px; height: 24px; animation: dv-spin 1s linear infinite; }
+@keyframes dv-spin { to { transform: rotate(360deg); } }
+.dv-spin-track { opacity: .25; }
+
+/* header 内联小按钮 */
+.dv-header-btn,
+.dv-header-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--et-space-1);
+  background: transparent;
+  border: 0;
+  padding: 4px;
+  height: 22px;
+  color: var(--et-fg-subtle);
+  border-radius: var(--et-radius-sm);
+  cursor: pointer;
+  transition: background-color 80ms ease, color 80ms ease;
+  font-size: var(--et-text-xs);
+}
+.dv-header-btn:hover:not(:disabled),
+.dv-header-action:hover:not(:disabled) {
+  background: var(--et-bg-hover);
+  color: var(--et-fg);
+}
+.dv-header-btn:disabled { opacity: .4; cursor: not-allowed; }
+.dv-header-btn.is-on { color: var(--et-accent); }
+.dv-header-btn.is-warn { color: var(--et-warn); }
+.dv-header-action {
+  padding: 0 6px;
+  height: 22px;
+}
+.dv-stats {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--et-space-1);
+  font-size: var(--et-text-xs);
+  color: var(--et-fg-muted);
+  padding: 0 var(--et-space-2);
+}
+.dv-stat-add { color: var(--et-success); font-weight: var(--et-fw-medium); }
+.dv-stat-rm  { color: var(--et-danger);  font-weight: var(--et-fw-medium); }
+</style>
+
+<!-- 上文样式继续（原 scoped 保留）-->
 <style scoped>
 .diff-row {
   line-height: 1.5;

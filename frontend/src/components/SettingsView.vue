@@ -5,6 +5,7 @@ import { UpdateConfig, ImportSnippets, ExportSnippets, DeleteSnippet, GetSnippet
 import { RegisterFileAssoc, UnregisterFileAssoc, IsFileAssocRegistered } from '../../wailsjs/go/main/App'
 import { ElMessage } from 'element-plus'
 import type { ThemeName } from '@/types'
+import ModalOverlay from './ModalOverlay.vue'
 
 const props = defineProps<{ visible: boolean }>()
 const emit = defineEmits(['close'])
@@ -303,10 +304,8 @@ watch(() => props.visible, (v) => {
 </script>
 
 <template>
-  <el-dialog :model-value="visible" title="首选项" width="780px" :close-on-click-modal="false"
-    @update:model-value="(val: boolean) => { if (!val) emit('close') }"
-    @keydown="handleKeyCapture">
-    <div class="flex" style="height:460px;">
+  <ModalOverlay :visible="visible" title="首选项" size="lg" :close-on-backdrop="false" @close="emit('close')">
+    <div class="settings" style="height:460px;" @keydown="handleKeyCapture">
       <div class="w-44 border-r border-gray-200 dark:border-gray-700 pr-2 mr-3 overflow-y-auto">
         <div v-for="p in pages" :key="p.key"
           class="flex items-center px-3 py-2 rounded text-sm cursor-pointer mb-1"
@@ -500,16 +499,77 @@ watch(() => props.visible, (v) => {
       </div>
     </div>
     <template #footer>
-      <el-button @click="emit('close')">取消</el-button>
-      <el-button type="primary" @click="saveSettings">保存</el-button>
+      <button class="et-btn" @click="emit('close')">取消</button>
+      <button class="et-btn et-btn-primary" @click="saveSettings">保存</button>
     </template>
-  </el-dialog>
+  </ModalOverlay>
 </template>
 
 <style scoped>
-.ndd-btn { padding: 2px 8px; font-size: 12px; border: 1px solid #d1d5db; background: #fff; color: #374151; border-radius: 3px; cursor: pointer; }
-.ndd-btn:hover { background: #f3f4f6; }
-html.dark .ndd-btn { background: #3c3c3c; color: #e0e0e0; border-color: #555; }
-::deep(.el-form-item) { margin-bottom: 12px; }
-::deep(.el-form-item__label) { font-size: 13px; padding-bottom: 4px; }
+/* v2.1：Settings 主体 token 化 */
+.settings {
+  display: flex;
+}
+.settings-nav {
+  width: 176px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--et-border);
+  padding-right: var(--et-space-2);
+  margin-right: var(--et-space-3);
+  overflow-y: auto;
+}
+.settings-nav-item {
+  display: flex;
+  align-items: center;
+  padding: var(--et-space-2) var(--et-space-3);
+  border-radius: var(--et-radius-sm);
+  font-size: var(--et-text-md);
+  cursor: pointer;
+  margin-bottom: var(--et-space-1);
+  color: var(--et-fg-muted);
+  transition: background-color 80ms ease, color 80ms ease;
+}
+.settings-nav-item:hover {
+  background: var(--et-bg-hover);
+  color: var(--et-fg);
+}
+.settings-nav-item.is-active {
+  background: var(--et-accent-soft);
+  color: var(--et-accent);
+}
+.settings-content {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: var(--et-space-2);
+}
+.settings-section { display: flex; flex-direction: column; gap: var(--et-space-3); }
+.settings-field {
+  border: 1px solid var(--et-border);
+  border-radius: var(--et-radius-sm);
+  padding: var(--et-space-3);
+  margin: 0;
+}
+.settings-field legend {
+  padding: 0 var(--et-space-1);
+  font-size: var(--et-text-xs);
+  color: var(--et-fg-muted);
+  font-weight: var(--et-fw-medium);
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: var(--et-space-3);
+}
+.settings-label {
+  font-size: var(--et-text-sm);
+  color: var(--et-fg-muted);
+  min-width: 64px;
+  flex-shrink: 0;
+}
+</style>
+
+<style>
+/* v2.1：兼容 Element Plus 内部 scoped（保留 ::deep 习惯，避免样式塌陷） */
+.el-form-item { margin-bottom: 12px; }
+.el-form-item__label { font-size: 13px; padding-bottom: 4px; }
 </style>

@@ -1,6 +1,10 @@
 <script lang="ts" setup>
+/**
+ * 文件对比规则 v2.1 — ModalOverlay 统一
+ */
 import { ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import ModalOverlay from './ModalOverlay.vue'
 
 const props = defineProps<{ visible: boolean }>()
 const emit = defineEmits<{
@@ -8,15 +12,12 @@ const emit = defineEmits<{
   (e: 'apply', rules: any): void
 }>()
 
-// Compare Options（三选一）
 const compareMode = ref<'before' | 'back' | 'all'>('before')
-// Match Options
 const blankMatch = ref(true)
 const equalRatio = ref<50 | 70 | 90>(50)
 
 watch(() => props.visible, (v) => {
   if (v) {
-    // 从 localStorage 恢复
     try {
       const saved = localStorage.getItem('file-cmp-rules')
       if (saved) {
@@ -43,82 +44,72 @@ function apply() {
 </script>
 
 <template>
-  <Teleport to="body">
-    <div v-if="visible" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30" @click.self="emit('close')">
-      <div class="bg-white dark:bg-[#2d2d2d] border border-gray-300 dark:border-gray-600 rounded shadow-2xl w-[480px]">
-        <div class="px-3 py-1.5 border-b border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-[#3c3c3c] text-sm font-medium text-gray-700 dark:text-gray-200">
-          文件对比规则
+  <ModalOverlay :visible="visible" title="文件对比规则" size="sm" @close="emit('close')">
+    <div class="fcmp">
+      <fieldset class="fcmp-field">
+        <legend>对比选项</legend>
+        <label><input type="radio" v-model="compareMode" value="before" /> 忽略行首空白字符</label>
+        <label><input type="radio" v-model="compareMode" value="back" /> 忽略行尾空白字符（如 Python）</label>
+        <label><input type="radio" v-model="compareMode" value="all" /> 忽略所有空白字符</label>
+      </fieldset>
+
+      <fieldset class="fcmp-field">
+        <legend>匹配选项</legend>
+        <label><input type="checkbox" v-model="blankMatch" /> 空行参与匹配</label>
+        <div class="fcmp-ratio">
+          <span class="fcmp-ratio-label">相等行的匹配率</span>
+          <select v-model="equalRatio" class="et-select">
+            <option :value="50">匹配 &gt;= 50%</option>
+            <option :value="70">匹配 &gt;= 70%</option>
+            <option :value="90">匹配 &gt;= 90%</option>
+          </select>
+          <span class="fcmp-hint">（预留：当前为逐行精确对比）</span>
         </div>
-        <div class="p-4 space-y-3">
-          <!-- Compare Options -->
-          <fieldset class="border border-gray-300 dark:border-gray-600 rounded p-3">
-            <legend class="text-xs text-gray-600 dark:text-gray-300 px-1">对比选项</legend>
-            <div class="space-y-2">
-              <label class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 cursor-pointer">
-                <input type="radio" v-model="compareMode" value="before" /> 忽略行首空白字符
-              </label>
-              <label class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 cursor-pointer">
-                <input type="radio" v-model="compareMode" value="back" /> 忽略行尾空白字符（如 Python）
-              </label>
-              <label class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 cursor-pointer">
-                <input type="radio" v-model="compareMode" value="all" /> 忽略所有空白字符
-              </label>
-            </div>
-          </fieldset>
-          <!-- Match Options -->
-          <fieldset class="border border-gray-300 dark:border-gray-600 rounded p-3">
-            <legend class="text-xs text-gray-600 dark:text-gray-300 px-1">匹配选项</legend>
-            <div class="space-y-2">
-              <label class="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 cursor-pointer">
-                <input type="checkbox" v-model="blankMatch" /> 空行参与匹配
-              </label>
-              <div class="flex items-center gap-2">
-                <span class="text-xs text-gray-600 dark:text-gray-300">相等行的匹配率:</span>
-                <select v-model="equalRatio" class="px-2 py-1 text-xs border border-gray-300 dark:border-gray-500 rounded bg-white dark:bg-[#1e1e1e] dark:text-gray-200">
-                  <option :value="50">匹配 >= 50%</option>
-                  <option :value="70">匹配 >= 70%</option>
-                  <option :value="90">匹配 >= 90%</option>
-                </select>
-                <span class="text-[11px] text-gray-400">（预留：当前为逐行精确对比）</span>
-              </div>
-            </div>
-          </fieldset>
-          <!-- 按钮 -->
-          <div class="flex justify-center gap-2 pt-1">
-            <button class="ndd-btn-primary" @click="apply">应用</button>
-            <button class="ndd-btn" @click="emit('close')">取消</button>
-          </div>
-        </div>
-      </div>
+      </fieldset>
     </div>
-  </Teleport>
+
+    <template #footer>
+      <button class="et-btn" @click="emit('close')">取消</button>
+      <button class="et-btn et-btn-primary" @click="apply">应用</button>
+    </template>
+  </ModalOverlay>
 </template>
 
 <style scoped>
-.ndd-btn {
-  padding: 4px 16px;
-  font-size: 12px;
-  border: 1px solid #d1d5db;
-  background: #fff;
-  color: #374151;
-  border-radius: 3px;
+.fcmp {
+  display: flex;
+  flex-direction: column;
+  gap: var(--et-space-3);
+}
+.fcmp-field {
+  border: 1px solid var(--et-border);
+  border-radius: var(--et-radius-sm);
+  padding: var(--et-space-3);
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--et-space-2);
+}
+.fcmp-field legend {
+  padding: 0 var(--et-space-1);
+  font-size: var(--et-text-xs);
+  color: var(--et-fg-muted);
+  font-weight: var(--et-fw-medium);
+}
+.fcmp-field label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--et-space-2);
+  font-size: var(--et-text-sm);
+  color: var(--et-fg);
   cursor: pointer;
 }
-.ndd-btn:hover { background: #f3f4f6; }
-.ndd-btn-primary {
-  padding: 4px 16px;
-  font-size: 12px;
-  border: 1px solid #3b82f6;
-  background: #3b82f6;
-  color: #fff;
-  border-radius: 3px;
-  cursor: pointer;
+.fcmp-field input { accent-color: var(--et-accent); cursor: pointer; }
+.fcmp-ratio {
+  display: flex;
+  align-items: center;
+  gap: var(--et-space-2);
 }
-.ndd-btn-primary:hover { background: #2563eb; }
-html.dark .ndd-btn {
-  background: #3c3c3c;
-  color: #e0e0e0;
-  border-color: #555;
-}
-html.dark .ndd-btn:hover { background: #4c4c4c; }
+.fcmp-ratio-label { font-size: var(--et-text-sm); color: var(--et-fg); }
+.fcmp-hint { font-size: var(--et-text-xs); color: var(--et-fg-subtle); }
 </style>

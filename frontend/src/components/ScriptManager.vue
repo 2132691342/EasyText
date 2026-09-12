@@ -1,8 +1,8 @@
 <template>
-  <div class="script-manager flex h-full bg-[var(--theme-bg)] text-[var(--theme-fg)]">
+  <div class="script-manager flex h-full bg-[var(--et-bg)] text-[var(--et-fg)]">
     <!-- Left: script list -->
-    <div class="w-2/5 border-r flex flex-col" style="border-color: var(--theme-gutter-bg)">
-      <div class="p-2 border-b" style="border-color: var(--theme-gutter-bg)">
+    <div class="w-2/5 border-r flex flex-col" style="border-color: var(--et-border)">
+      <div class="p-2 border-b" style="border-color: var(--et-border)">
         <ElInput v-model="searchQuery" placeholder="搜索脚本..." size="small" :prefix-icon="SearchIcon" />
       </div>
       <ElTable :data="filteredScripts" size="small" highlight-current-row stripe
@@ -20,7 +20,7 @@
           </template>
         </ElTableColumn>
       </ElTable>
-      <div class="p-2 border-t" style="border-color: var(--theme-gutter-bg)">
+      <div class="p-2 border-t" style="border-color: var(--et-border)">
         <ElButton size="small" @click="createNew" type="primary">
           <Plus class="w-4 h-4 mr-1" /> 新建
         </ElButton>
@@ -29,7 +29,7 @@
 
     <!-- Right: editor -->
     <div class="flex-1 flex flex-col" v-if="editingScript">
-      <div class="p-3 border-b space-y-2" style="border-color: var(--theme-gutter-bg)">
+      <div class="p-3 border-b space-y-2" style="border-color: var(--et-border)">
         <div class="flex gap-2">
           <ElInput v-model="editingScript.name" placeholder="脚本名称" size="small" class="flex-1" />
           <ElSelect v-model="editingScript.language" size="small" style="width: 120px">
@@ -42,8 +42,8 @@
       <textarea v-model="editingScript.code"
                 class="flex-1 p-3 font-mono text-sm resize-none outline-none bg-transparent"
                 placeholder="-- 在此编写脚本代码..."
-                style="color: var(--theme-fg)" />
-      <div class="p-2 border-t flex gap-2" style="border-color: var(--theme-gutter-bg)">
+                style="color: var(--et-fg)" />
+      <div class="p-2 border-t flex gap-2" style="border-color: var(--et-border)">
         <ElButton size="small" type="primary" @click="saveScript">
           <Save class="w-4 h-4 mr-1" /> 保存
         </ElButton>
@@ -57,7 +57,7 @@
     </div>
 
     <!-- Empty state -->
-    <div v-else class="flex-1 flex items-center justify-center text-sm text-[var(--theme-comment)]">
+    <div v-else class="flex-1 flex items-center justify-center text-sm text-[var(--et-fg-muted)]">
       选择或新建一个脚本
     </div>
   </div>

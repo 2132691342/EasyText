@@ -1,11 +1,11 @@
 <template>
-  <div class="color-picker p-4 bg-[var(--theme-bg)] text-[var(--theme-fg)] rounded-lg" style="width: 280px">
+  <div class="color-picker">
     <!-- Color swatch -->
-    <div class="color-swatch w-full h-20 rounded-lg mb-3 border" :style="{ backgroundColor: currentColor }" />
+    <div class="color-swatch" :style="{ backgroundColor: currentColor }" />
 
     <!-- Pick button -->
-    <ElButton type="primary" class="w-full mb-3" @click="pickColor">
-      <svg class="w-4 h-4 mr-1 inline" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <ElButton type="primary" class="color-pick-btn" @click="pickColor">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
         <path d="M3 17L17 3l4 4L7 21l-4-4z" /><path d="M13 7l4 4" />
       </svg>
       <template v-if="eyeDropperSupported">屏幕取色</template>
@@ -13,44 +13,45 @@
     </ElButton>
 
     <!-- Hex input -->
-    <div class="flex items-center gap-2 mb-2">
-      <span class="text-xs text-[var(--theme-comment)] w-8">HEX</span>
+    <div class="color-row">
+      <span class="color-row-label">HEX</span>
       <ElInput v-model="hexColor" size="small" @input="onHexInput" placeholder="#RRGGBB" />
       <ElButton size="small" @click="copyToClipboard(hexColor)">
-        <Copy class="w-3 h-3" />
+        <Copy :size="12" :stroke-width="1.6" />
       </ElButton>
     </div>
 
     <!-- RGB display -->
-    <div class="flex items-center gap-2 mb-2">
-      <span class="text-xs text-[var(--theme-comment)] w-8">RGB</span>
-      <span class="font-mono text-sm">{{ rgbStr }}</span>
+    <div class="color-row">
+      <span class="color-row-label">RGB</span>
+      <span class="color-mono">{{ rgbStr }}</span>
       <ElButton size="small" @click="copyToClipboard(rgbStr)">
-        <Copy class="w-3 h-3" />
+        <Copy :size="12" :stroke-width="1.6" />
       </ElButton>
     </div>
 
     <!-- HSL display -->
-    <div class="flex items-center gap-2 mb-3">
-      <span class="text-xs text-[var(--theme-comment)] w-8">HSL</span>
-      <span class="font-mono text-sm">{{ hslStr }}</span>
+    <div class="color-row">
+      <span class="color-row-label">HSL</span>
+      <span class="color-mono">{{ hslStr }}</span>
     </div>
 
     <!-- Color format toggle -->
-    <ElRadioGroup v-model="colorFormat" size="small" class="mb-3">
+    <ElRadioGroup v-model="colorFormat" size="small" class="color-fmt">
       <ElRadioButton value="hex">HEX</ElRadioButton>
       <ElRadioButton value="rgb">RGB</ElRadioButton>
       <ElRadioButton value="hsl">HSL</ElRadioButton>
     </ElRadioGroup>
 
     <!-- History -->
-    <div v-if="history.length > 0">
-      <p class="text-xs text-[var(--theme-comment)] mb-1">历史记录</p>
-      <div class="flex flex-wrap gap-1">
+    <div v-if="history.length > 0" class="color-history">
+      <p class="color-history-title">历史记录</p>
+      <div class="color-history-grid">
         <div v-for="(c, i) in history" :key="i"
-             class="w-6 h-6 rounded cursor-pointer border hover:scale-110 transition-transform"
+             class="color-history-swatch"
              :style="{ backgroundColor: c }"
-             @click="selectColor(c)" />
+             @click="selectColor(c)"
+             :title="c" />
       </div>
     </div>
   </div>
@@ -99,7 +100,6 @@ const hslStr = computed(() => {
 
 async function pickColor() {
   if (!eyeDropperSupported.value) return
-
   try {
     const EyeDropperClass = window.EyeDropper
     if (!EyeDropperClass) throw new Error('EyeDropper unavailable')
@@ -123,8 +123,6 @@ function selectColor(color: string) {
   currentColor.value = color
   hexColor.value = color
   emit('select', color)
-
-  // Add to history
   history.value = [color, ...history.value.filter(c => c !== color)].slice(0, 10)
 }
 
@@ -134,3 +132,70 @@ function copyToClipboard(text: string) {
   })
 }
 </script>
+
+<style scoped>
+.color-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--et-space-2);
+  color: var(--et-fg);
+}
+.color-swatch {
+  width: 100%;
+  height: 80px;
+  border-radius: var(--et-radius);
+  border: 1px solid var(--et-border);
+}
+.color-pick-btn {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--et-space-1);
+}
+.color-row {
+  display: flex;
+  align-items: center;
+  gap: var(--et-space-2);
+}
+.color-row-label {
+  width: 32px;
+  font-size: var(--et-text-xs);
+  color: var(--et-fg-subtle);
+  flex-shrink: 0;
+}
+.color-mono {
+  font-family: var(--editor-font-family, 'Consolas', monospace);
+  font-size: var(--et-text-md);
+  color: var(--et-fg);
+  flex: 1;
+}
+.color-fmt {
+  align-self: flex-start;
+}
+.color-history {
+  border-top: 1px solid var(--et-border);
+  padding-top: var(--et-space-2);
+}
+.color-history-title {
+  font-size: var(--et-text-xs);
+  color: var(--et-fg-subtle);
+  margin: 0 0 var(--et-space-1);
+}
+.color-history-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--et-space-1);
+}
+.color-history-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--et-radius-sm);
+  border: 1px solid var(--et-border);
+  cursor: pointer;
+  transition: transform 80ms ease;
+}
+.color-history-swatch:hover {
+  transform: scale(1.1);
+}
+</style>

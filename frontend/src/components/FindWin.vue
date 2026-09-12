@@ -4,6 +4,7 @@ import { useEditorStore } from '@/stores'
 import { OpenDirectoryDialog, FindInDirectory, ReplaceInFiles, BatchReplace } from '../../wailsjs/go/main/App'
 import { confirmDialog } from '@/utils/confirm'
 import { ElMessage } from 'element-plus'
+import ModalOverlay from './ModalOverlay.vue'
 
 const props = defineProps<{ visible: boolean; mode: 'find' | 'replace' | 'files' | 'global' | 'mark' }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
@@ -463,14 +464,14 @@ watch(() => props.visible, async (v) => {
 </script>
 
 <template>
-  <Teleport to="body">
-    <div v-if="visible" class="find-win-overlay" @click.self="emit('close')" @keydown="onKey">
-      <div class="find-win">
-        <!-- 标题栏 -->
-        <div class="find-win-titlebar">
-          <span class="text-sm">查找 / 替换 / 目录查找 / 标记</span>
-          <button class="find-win-close" @click="emit('close')">✕</button>
-        </div>
+  <ModalOverlay
+    :visible="visible"
+    title="查找 / 替换 / 目录查找 / 标记"
+    size="lg"
+    :close-on-backdrop="false"
+    @close="emit('close')"
+  >
+    <div class="find-win" @keydown="onKey">
 
         <!-- Tab 栏 (notepad-- 风格) -->
         <div class="find-win-tabs">
@@ -662,8 +663,7 @@ watch(() => props.visible, async (v) => {
         <!-- 状态栏 -->
         <div class="find-win-status">{{ fStatus }}</div>
       </div>
-    </div>
-  </Teleport>
+  </ModalOverlay>
 </template>
 
 <style scoped>
