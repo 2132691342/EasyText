@@ -84,7 +84,7 @@ frontend/src/
 
 ## 已知边界（勿当 bug 重复修）
 
-- wailsjs 绑定已提交进仓库（`frontend/scripts/gen-bindings.cjs` 生成），
+- wailsjs 绑定随 wails build/dev 自动重新生成且已提交进仓库，
   前端 typecheck 不需要 `wails generate module`（部分环境下该命令不可用）。
 - i18n（lang-en）只写配置不翻译模板字符串，有意排除。
 - `new-window` 单窗口是 Wails v2 模型限制。

@@ -1,117 +1,244 @@
-// WARNING: 本文件由 scripts/gen-bindings.cjs 生成，请勿手改。
-export function GetBookmarks(filePath: any): Promise<any>;
-export function GetAllBookmarks(): Promise<any>;
-export function AddBookmark(filePath: any, lineNumber: any, note: any, tag: any): Promise<any>;
-export function RemoveBookmark(id: any): Promise<any>;
-export function UpdateBookmarkNote(id: any, note: any): Promise<any>;
-export function UpdateBookmarkTag(id: any, tag: any): Promise<any>;
-export function CompareDirectories(leftDir: any, rightDir: any): Promise<any>;
-export function BinaryCompare(leftPath: any, rightPath: any): Promise<any>;
-export function GetConfig(): Promise<any>;
-export function UpdateConfig(newConfig: any): Promise<any>;
-export function SetCloseToTray(enabled: any): Promise<any>;
-export function ForceQuit(): Promise<any>;
-export function GetSetting(key: any): Promise<any>;
-export function SetSetting(key: any, value: any): Promise<any>;
-export function AddFavorite(path: any): Promise<any>;
-export function RemoveFavorite(path: any): Promise<any>;
-export function GetFavorites(): Promise<any>;
-export function Convert(content: any, fromFmt: any, toFmt: any): Promise<any>;
-export function ShowMessageDialog(title: any, message: any, dialogType: any): Promise<any>;
-export function ShowConfirmDialog(title: any, message: any): Promise<any>;
-export function GetAppVersion(): Promise<any>;
-export function GetSystemInfo(): Promise<any>;
-export function Exit(): Promise<any>;
-export function CompareDiff(oldText: any, newText: any): Promise<any>;
-export function CompareDiffLines(oldText: any, newText: any): Promise<any>;
-export function GetDiffPatch(oldText: any, newText: any): Promise<any>;
-export function ApplyDiffPatch(text: any, patch: any): Promise<any>;
-export function CompareCharacters(oldStr: any, newStr: any): Promise<any>;
-export function OpenDirectoryDialog(): Promise<any>;
-export function GetDirectoryTree(path: any): Promise<any>;
-export function CreateDirectory(path: any): Promise<any>;
-export function ListDirectory(path: any): Promise<any>;
-export function AutoSaveDraft(filePath: any, content: any, encoding: any, lineEnding: any): Promise<any>;
-export function GetDraft(filePath: any): Promise<any>;
-export function ListDrafts(): Promise<any>;
-export function DeleteDraft(filePath: any): Promise<any>;
-export function ClearAllDrafts(): Promise<any>;
-export function CheckDraftConflict(filePath: any): Promise<any>;
-export function GetSupportedEncodings(): Promise<any>;
-export function ConvertEncoding(content: any, fromEncoding: any, toEncoding: any): Promise<any>;
-export function DetectEncoding(content: any): Promise<any>;
-export function ConvertToUTF8(content: any, fromEncoding: any): Promise<any>;
-export function ConvertFromUTF8(content: any, toEncoding: any): Promise<any>;
-export function HasBOM(content: any): Promise<any>;
-export function RemoveBOM(content: any): Promise<any>;
-export function AddBOM(content: any, encoding: any): Promise<any>;
-export function OpenFileDialog(): Promise<any>;
-export function SaveFileDialog(defaultFilename: any): Promise<any>;
-export function ReadFile(path: any): Promise<any>;
-export function ReadPartial(path: any, offset: any, count: any): Promise<any>;
-export function SaveFile(path: any, content: any, encoding: any): Promise<any>;
-export function SaveFileWithBackup(path: any, content: any, encoding: any): Promise<any>;
-export function GetFileInfo(path: any): Promise<any>;
-export function DeleteFile(path: any): Promise<any>;
-export function DeleteDirectory(path: any): Promise<any>;
-export function RenameFile(oldPath: any, newPath: any): Promise<any>;
-export function CopyFile(src: any, dst: any): Promise<any>;
-export function IsBinaryFile(path: any): Promise<any>;
-export function ReadFileBytes(path: any): Promise<any>;
-export function ReadFileChunk(path: any, offset: any, size: any): Promise<any>;
-export function SaveFileBytes(path: any, data: any): Promise<any>;
-export function StartFileWatch(path: any): Promise<any>;
-export function StopFileWatch(path: any): Promise<any>;
-export function FindInFile(filePath: any, search: any, options: any): Promise<any>;
-export function FindInDirectory(dirPath: any, search: any, options: any): Promise<any>;
-export function ReplaceInFile(filePath: any, search: any, replace: any, options: any): Promise<any>;
-export function BatchReplace(dirPath: any, options: any): Promise<any>;
-export function SearchInFiles(filePaths: any, search: any, options: any): Promise<any>;
-export function ReplaceInFiles(filePaths: any, search: any, replace: any, options: any): Promise<any>;
-export function ComputeHash(content: any): Promise<any>;
-export function ComputeFileHash(filePath: any): Promise<any>;
-export function ComputeHashWithAlgo(content: any, algorithm: any): Promise<any>;
-export function ComputeFileHashWithAlgo(filePath: any, algorithm: any): Promise<any>;
-export function FormatJSON(content: any, indentSize: any): Promise<any>;
-export function MinifyJSON(content: any): Promise<any>;
-export function ValidateJSON(content: any): Promise<any>;
-export function FlattenJSON(content: any, separator: any): Promise<any>;
-export function ExtractJSONKeys(content: any): Promise<any>;
-export function JsonPathQuery(jsonStr: any, path: any): Promise<any>;
-export function JsonToStruct(jsonStr: any, lang: any, rootName: any): Promise<any>;
-export function JsonStructuredDiff(leftJSON: any, rightJSON: any): Promise<any>;
-export function StartMacroRecording(): Promise<any>;
-export function StopMacroRecording(): Promise<any>;
-export function RecordMacroStep(step: any): Promise<any>;
-export function GetMacros(): Promise<any>;
-export function DeleteMacro(id: any): Promise<any>;
-export function RenameMacro(id: any, newName: any): Promise<any>;
-export function IsMacroRecording(): Promise<any>;
-export function SaveCurrentMacro(name: any): Promise<any>;
-export function TestRegex(pattern: any, flags: any, input: any): Promise<any>;
-export function ValidateRegex(pattern: any): Promise<any>;
-export function EscapeRegex(input: any): Promise<any>;
-export function BatchRenamePreview(files: any, pattern: any, startIndex: any, step: any, delimiter: any): Promise<any>;
-export function BatchRenameExecute(preview: any): Promise<any>;
-export function GetCommonNamePatterns(): Promise<any>;
-export function ListScripts(): Promise<any>;
-export function GetScript(id: any): Promise<any>;
-export function SaveScript(script: any): Promise<any>;
-export function DeleteScript(id: any): Promise<any>;
-export function ExecuteScript(id: any, context: any): Promise<any>;
-export function SaveSession(files: any, activeID: any): Promise<any>;
-export function GetSession(): Promise<any>;
-export function GetSnippets(language: any): Promise<any>;
-export function CreateSnippet(entry: any): Promise<any>;
-export function UpdateSnippet(entry: any): Promise<any>;
-export function DeleteSnippet(id: any): Promise<any>;
-export function ImportSnippets(jsonData: any): Promise<any>;
-export function ExportSnippets(): Promise<any>;
-export function GetRecentFiles(): Promise<any>;
-export function GetRecentFolders(): Promise<any>;
-export function AddRecentEntry(path: any, isFolder: any): Promise<any>;
-export function ClearRecentFiles(): Promise<any>;
-export function ClearRecentFolders(): Promise<any>;
-export function RegisterFileAssoc(): Promise<any>;
-export function UnregisterFileAssoc(): Promise<any>;
-export function IsFileAssocRegistered(): Promise<any>;
+// Cynhyrchwyd y ffeil hon yn awtomatig. PEIDIWCH Â MODIWL
+// This file is automatically generated. DO NOT EDIT
+import {tools} from '../models';
+import {api} from '../models';
+import {config} from '../models';
+import {file} from '../models';
+import {frontend} from '../models';
+import {context} from '../models';
+
+export function AddBOM(arg1:Array<number>,arg2:string):Promise<Array<number>>;
+
+export function AddBookmark(arg1:string,arg2:number,arg3:string,arg4:string):Promise<tools.BookmarkEntry>;
+
+export function AddFavorite(arg1:string):Promise<void>;
+
+export function AddRecentEntry(arg1:string,arg2:boolean):Promise<void>;
+
+export function ApplyDiffPatch(arg1:string,arg2:string):Promise<string>;
+
+export function AutoSaveDraft(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
+
+export function BatchRenameExecute(arg1:api.BatchRenameResult):Promise<api.BatchRenameResult>;
+
+export function BatchRenamePreview(arg1:Array<string>,arg2:string,arg3:number,arg4:number,arg5:string):Promise<api.BatchRenameResult>;
+
+export function BatchReplace(arg1:string,arg2:tools.FindOptions):Promise<number>;
+
+export function BinaryCompare(arg1:string,arg2:string):Promise<tools.BinCompareResult>;
+
+export function CheckDraftConflict(arg1:string):Promise<number>;
+
+export function ClearAllDrafts():Promise<void>;
+
+export function ClearRecentFiles():Promise<void>;
+
+export function ClearRecentFolders():Promise<void>;
+
+export function CompareCharacters(arg1:string,arg2:string):Promise<string>;
+
+export function CompareDiff(arg1:string,arg2:string):Promise<tools.DiffResult>;
+
+export function CompareDiffLines(arg1:string,arg2:string):Promise<Array<tools.DiffBlock>>;
+
+export function CompareDirectories(arg1:string,arg2:string):Promise<tools.DirCompareResult>;
+
+export function ComputeFileHash(arg1:string):Promise<api.HashResult>;
+
+export function ComputeFileHashWithAlgo(arg1:string,arg2:string):Promise<api.HashAlgoResult>;
+
+export function ComputeHash(arg1:string):Promise<api.HashResult>;
+
+export function ComputeHashWithAlgo(arg1:string,arg2:string):Promise<api.HashAlgoResult>;
+
+export function Convert(arg1:string,arg2:string,arg3:string):Promise<string>;
+
+export function ConvertEncoding(arg1:Array<number>,arg2:string,arg3:string):Promise<Array<number>>;
+
+export function ConvertFromUTF8(arg1:string,arg2:string):Promise<Array<number>>;
+
+export function ConvertToUTF8(arg1:Array<number>,arg2:string):Promise<string>;
+
+export function CopyFile(arg1:string,arg2:string):Promise<void>;
+
+export function CreateDirectory(arg1:string):Promise<void>;
+
+export function CreateSnippet(arg1:tools.SnippetEntry):Promise<number>;
+
+export function DeleteDirectory(arg1:string):Promise<void>;
+
+export function DeleteDraft(arg1:string):Promise<void>;
+
+export function DeleteFile(arg1:string):Promise<void>;
+
+export function DeleteMacro(arg1:string):Promise<boolean>;
+
+export function DeleteScript(arg1:string):Promise<void>;
+
+export function DeleteSnippet(arg1:number):Promise<void>;
+
+export function DetectEncoding(arg1:Array<number>):Promise<string>;
+
+export function EscapeRegex(arg1:string):Promise<string>;
+
+export function ExecuteScript(arg1:string,arg2:tools.ScriptContext):Promise<tools.ScriptResult>;
+
+export function Exit():Promise<void>;
+
+export function ExportSnippets():Promise<string>;
+
+export function ExtractJSONKeys(arg1:string):Promise<Array<string>>;
+
+export function FindInDirectory(arg1:string,arg2:string,arg3:tools.FindOptions):Promise<Array<tools.FindInFileResult>>;
+
+export function FindInFile(arg1:string,arg2:string,arg3:tools.FindOptions):Promise<Array<tools.FindMatch>>;
+
+export function FlattenJSON(arg1:string,arg2:string):Promise<string>;
+
+export function ForceQuit():Promise<void>;
+
+export function FormatJSON(arg1:string,arg2:number):Promise<tools.JSONResult>;
+
+export function GetAllBookmarks():Promise<Record<string, Array<tools.BookmarkEntry>>>;
+
+export function GetAppVersion():Promise<string>;
+
+export function GetBookmarks(arg1:string):Promise<Array<tools.BookmarkEntry>>;
+
+export function GetCommonNamePatterns():Promise<Array<string>>;
+
+export function GetConfig():Promise<config.AppConfig>;
+
+export function GetDiffPatch(arg1:string,arg2:string):Promise<string>;
+
+export function GetDirectoryTree(arg1:string):Promise<file.FileTree>;
+
+export function GetDraft(arg1:string):Promise<tools.DraftEntry>;
+
+export function GetFavorites():Promise<Array<string>>;
+
+export function GetFileInfo(arg1:string):Promise<file.FileInfo>;
+
+export function GetMacros():Promise<Array<tools.Macro>>;
+
+export function GetRecentFiles():Promise<Array<tools.RecentEntryResult>>;
+
+export function GetRecentFolders():Promise<Array<tools.RecentEntryResult>>;
+
+export function GetScript(arg1:string):Promise<tools.ScriptInfo>;
+
+export function GetSession():Promise<api.Session>;
+
+export function GetSetting(arg1:string):Promise<string>;
+
+export function GetSnippets(arg1:string):Promise<Array<tools.SnippetEntry>>;
+
+export function GetSupportedEncodings():Promise<Array<tools.EncodingInfo>>;
+
+export function GetSystemInfo():Promise<Record<string, string>>;
+
+export function HasBOM(arg1:Array<number>):Promise<boolean|string>;
+
+export function ImportSnippets(arg1:string):Promise<number>;
+
+export function IsBinaryFile(arg1:string):Promise<boolean>;
+
+export function IsFileAssocRegistered():Promise<boolean>;
+
+export function IsMacroRecording():Promise<boolean>;
+
+export function JsonPathQuery(arg1:string,arg2:string):Promise<Array<tools.JSONPathResult>>;
+
+export function JsonStructuredDiff(arg1:string,arg2:string):Promise<tools.JSONDiffResult>;
+
+export function JsonToStruct(arg1:string,arg2:string,arg3:string):Promise<string>;
+
+export function ListDirectory(arg1:string):Promise<Array<file.FileInfo>>;
+
+export function ListDrafts():Promise<Array<tools.DraftEntry>>;
+
+export function ListScripts():Promise<Array<tools.ScriptInfo>>;
+
+export function MinifyJSON(arg1:string):Promise<tools.JSONResult>;
+
+export function OpenDirectoryDialog():Promise<string>;
+
+export function OpenFileDialog():Promise<string>;
+
+export function ReadFile(arg1:string):Promise<file.ReadResult>;
+
+export function ReadFileBytes(arg1:string):Promise<Array<number>>;
+
+export function ReadFileChunk(arg1:string,arg2:number,arg3:number):Promise<file.ChunkResult>;
+
+export function ReadPartial(arg1:string,arg2:number,arg3:number):Promise<string>;
+
+export function RecordMacroStep(arg1:tools.MacroStep):Promise<void>;
+
+export function RegisterFileAssoc():Promise<Array<string>>;
+
+export function RemoveBOM(arg1:Array<number>):Promise<Array<number>>;
+
+export function RemoveBookmark(arg1:number):Promise<void>;
+
+export function RemoveFavorite(arg1:string):Promise<void>;
+
+export function RenameFile(arg1:string,arg2:string):Promise<void>;
+
+export function RenameMacro(arg1:string,arg2:string):Promise<boolean>;
+
+export function ReplaceInFile(arg1:string,arg2:string,arg3:string,arg4:tools.FindOptions):Promise<number>;
+
+export function ReplaceInFiles(arg1:Array<string>,arg2:string,arg3:string,arg4:tools.FindOptions):Promise<number>;
+
+export function SaveCurrentMacro(arg1:string):Promise<tools.Macro>;
+
+export function SaveFile(arg1:string,arg2:string,arg3:string):Promise<file.WriteResult>;
+
+export function SaveFileBytes(arg1:string,arg2:Array<number>):Promise<void>;
+
+export function SaveFileDialog(arg1:string):Promise<string>;
+
+export function SaveFileWithBackup(arg1:string,arg2:string,arg3:string):Promise<file.WriteResult>;
+
+export function SaveScript(arg1:tools.ScriptInfo):Promise<void>;
+
+export function SaveSession(arg1:Array<api.SessionFile>,arg2:string):Promise<void>;
+
+export function SearchInFiles(arg1:Array<string>,arg2:string,arg3:tools.FindOptions):Promise<Array<tools.FindInFileResult>>;
+
+export function SetCloseToTray(arg1:boolean):Promise<void>;
+
+export function SetSetting(arg1:string,arg2:string):Promise<void>;
+
+export function ShowConfirmDialog(arg1:string,arg2:string):Promise<boolean>;
+
+export function ShowMessageDialog(arg1:string,arg2:string,arg3:frontend.DialogType):Promise<string>;
+
+export function Shutdown(arg1:context.Context):Promise<void>;
+
+export function StartFileWatch(arg1:string):Promise<void>;
+
+export function StartMacroRecording():Promise<void>;
+
+export function Startup(arg1:context.Context):Promise<void>;
+
+export function StopFileWatch(arg1:string):Promise<void>;
+
+export function StopMacroRecording():Promise<tools.Macro>;
+
+export function TestRegex(arg1:string,arg2:string,arg3:string):Promise<tools.RegexTestResult>;
+
+export function UnregisterFileAssoc():Promise<void>;
+
+export function UpdateBookmarkNote(arg1:number,arg2:string):Promise<void>;
+
+export function UpdateBookmarkTag(arg1:number,arg2:string):Promise<void>;
+
+export function UpdateConfig(arg1:config.AppConfig):Promise<void>;
+
+export function UpdateSnippet(arg1:tools.SnippetEntry):Promise<void>;
+
+export function ValidateJSON(arg1:string):Promise<tools.JSONResult>;
+
+export function ValidateRegex(arg1:string):Promise<void>;

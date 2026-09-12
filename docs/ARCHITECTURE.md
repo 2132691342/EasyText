@@ -241,9 +241,9 @@ ext/
 
 ### 5.6 绑定生成
 
-`frontend/wailsjs/` 由 `frontend/scripts/gen-bindings.cjs` 从 Go 源码静态生成
-并**提交进仓库**：前端 `vue-tsc` 类型检查不依赖 Wails CLI（`wails generate
-module` 在部分环境不可用），CI 因此无需安装 Go 工具链即可构建前端。
+`frontend/wailsjs/` 随 `wails build` / `wails dev` 自动重新生成，并**提交进
+仓库**（备用手工生成脚本：`frontend/scripts/gen-bindings.cjs`）：前端
+`vue-tsc` 类型检查不依赖 Wails CLI，CI 因此无需安装 Go 工具链即可构建前端。
 
 ## 6. 典型数据流
 
