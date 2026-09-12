@@ -5,9 +5,11 @@ import { resolve } from 'path'
 export default defineConfig({
   plugins: [vue()],
   resolve: {
-    alias: {
-      '@': resolve(__dirname, 'src')
-    }
+    alias: [
+      { find: '@', replacement: resolve(__dirname, 'src') },
+      // wailsjs 在 frontend/ 根，Vite alias 把所有 ../wailsjs/ 解析到它
+      { find: /^(\.\.\/)+wailsjs\/(.*)$/, replacement: resolve(__dirname, 'wailsjs') + '/$2' },
+    ]
   },
   build: {
     outDir: 'dist',

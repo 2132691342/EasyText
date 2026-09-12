@@ -28,7 +28,8 @@
     "src/**/*.tsx",
     "src/**/*.vue",
     "wailsjs/**/*.ts",
-    "wailsjs/**/*.d.ts"
+    "wailsjs/**/*.d.ts",
+    "src/wailsjs/**/*.ts"
   ],
   "references": [
     {

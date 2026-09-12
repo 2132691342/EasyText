@@ -113,11 +113,14 @@ func main() {
 //
 // forceQuit 是"前端已确认"的放行标志，避免 runtime.Quit 再次触发本回调时
 // 形成「永远阻止关闭」的死循环。
+// v2.1 修 bug #5：forceQuit 改用 closepolicy.SetForce 暴露给 Wails，
+// 前端 useCommands.exit 在 Quit() 前先调 ForceQuit() 置标志，
+// 同时清掉 closepolicy.enabled（避免"先 Set(false) 再 Quit 时被 OnBeforeClose 误判"）。
 var forceQuit atomic.Bool
 
 func onBeforeClose(ctx context.Context) (prevent bool) {
 	// 前端已确认退出（或托盘「退出」菜单触发）：放行
-	if forceQuit.Load() {
+	if closepolicy.IsForced() || forceQuit.Load() {
 		return false
 	}
 	// 关闭到托盘策略开启时，先隐藏窗口

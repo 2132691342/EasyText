@@ -71,7 +71,7 @@ const MENUS = [
     { sep: true },
     { label: '在新窗口中打开', cmd: 'new-window' },
     { label: '重新加载(&L)', cmd: 'reload-file' },
-    { label: '清空历史记录', cmd: 'clear-history' },
+    { label: '清空最近文件记录', cmd: 'clear-history' },
     { label: '最近打开的文件', sub: 'recent' },
     { sep: true },
     { label: '草稿管理...', cmd: 'manage-drafts' },

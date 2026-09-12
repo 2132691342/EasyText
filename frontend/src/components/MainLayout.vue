@@ -745,6 +745,30 @@ function onVisibilityChange() {
   if (!document.hidden) checkExternalChanges()
 }
 
+// v2.1 修 bug #6：监听后端 file:change 事件，直接触发 checkExternalChanges，
+// 不再仅依赖窗口焦点 / 可见性轮询。StartFileWatch 由 watchActiveTab() 在
+// activeTab.path 变化时启动。
+let cancelFileChangeListener: (() => void) | null = null
+let watchedPath: string | null = null
+async function watchActiveTab() {
+  const { StartFileWatch, StopFileWatch } = await import('../../wailsjs/go/main/App')
+  const path = ed.activeTab?.path
+  if (path === watchedPath) return
+  if (watchedPath) {
+    try { await StopFileWatch(watchedPath) } catch { /* ignore */ }
+  }
+  watchedPath = path || null
+  if (path) {
+    try { await StartFileWatch(path) } catch { /* ignore */ }
+  }
+}
+
+// 监听 file:change：后端 fsnotify 命中时直接调 checkExternalChanges
+async function onFileChange() {
+  // 节流由 checkExternalChanges 内部的 3s 间隔保障
+  checkExternalChanges()
+}
+
 // ---- useCommands: 命令分发（在 helper 函数全部定义后调用） ----
 const { onMenuCmd } = useCommands({
   ed, fs, ss,
@@ -859,6 +883,12 @@ onMounted(() => {
   window.addEventListener('focus', onWindowFocus)
   setupOpenFileListener()
   setupBeforeCloseListener()
+  // v2.1 修 bug #6：监听后端 file:change 事件，不再只依赖 focus/visibility 轮询
+  ;(async () => {
+    const { EventsOn } = await import('../../wailsjs/runtime/runtime')
+    cancelFileChangeListener = EventsOn('file:change', onFileChange)
+  })()
+  watchActiveTab()
   ed.loadMacros() // 恢复上次保存的宏（此前从未调用，宏重启后必然丢失）
   // 设置里的「关闭时恢复文件」开关此前没有任何消费方，这里接线
   if (ss.config?.ui?.restoreSession !== false) fileOps.restoreSession()
@@ -877,8 +907,12 @@ onUnmounted(() => {
   window.removeEventListener('focus', onWindowFocus)
   cleanupOpenFileListener()
   cleanupBeforeCloseListener()
+  if (cancelFileChangeListener) { cancelFileChangeListener(); cancelFileChangeListener = null }
   stopAutoSave()
 })
+
+// 监听活动 tab 路径变化 → 重新启 watch（bug #6 修复）
+watch(() => ed.activeTab?.path, () => { watchActiveTab() })
 </script>
 
 <template>

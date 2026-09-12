@@ -2,9 +2,11 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"easy-text/backend/config"
 	"easy-text/backend/file"
@@ -58,6 +60,11 @@ type Handler struct {
 	snippetService  *tools.SnippetService
 	bookmarkService *tools.BookmarkService
 	scriptService   *tools.ScriptService
+
+	// v2.1：应用版本号（修 bug #4：原 GetAppVersion 硬编码 "1.0.0"）
+	// 由 NewHandler 在启动时从 wails.json 读取 info.productVersion 注入；
+	// 找不到时回退 "0.0.0"，便于诊断"前端拿到的是回退值"。
+	appVersion string
 }
 
 // NewHandler 创建 Handler 实例，初始化所有领域服务。
@@ -81,9 +88,39 @@ func NewHandler() *Handler {
 		compareService:   tools.NewCompareService(),
 		FileAssocHandler: NewFileAssocHandler(),
 		SearchHandler:    NewSearchHandler(tools.NewFindReplaceService(), tools.NewDiffTool()),
+		appVersion:       loadAppVersionFromWailsJSON(),
 		// RecentHandler 在 Startup 阶段依赖 DB 注入，此处先保留 nil；
 		// Startup 中通过 h.RecentHandler = NewRecentHandler(recSvc) 注入。
 	}
+}
+
+// loadAppVersionFromWailsJSON 从 ./wails.json 读取 info.productVersion，
+// 找不到文件 / 解析失败时回退 "0.0.0"。
+func loadAppVersionFromWailsJSON() string {
+	// wails.json 在进程 cwd 下；这里使用可执行文件所在目录向上两级回退作为兜底
+	candidates := []string{
+		"wails.json",
+		"../wails.json",
+		"../../wails.json",
+	}
+	for _, p := range candidates {
+		data, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		var meta struct {
+			Info struct {
+				ProductVersion string `json:"productVersion"`
+			} `json:"info"`
+		}
+		if err := json.Unmarshal(data, &meta); err != nil {
+			continue
+		}
+		if v := strings.TrimSpace(meta.Info.ProductVersion); v != "" {
+			return v
+		}
+	}
+	return "0.0.0"
 }
 
 // Startup 应用启动时调用，初始化日志、数据库和配置。

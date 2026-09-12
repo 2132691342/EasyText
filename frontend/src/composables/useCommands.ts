@@ -110,6 +110,8 @@ export function useCommands(deps: {
       'open-workspace': deps.openWorkspace,
       // 退出：先处理未保存内容，再落会话，最后真正退出进程。
       // 此前仅调用 saveSession，点了「退出」窗口毫无反应——典型的流程断链。
+      // v2.1 修 bug #5：在 Quit() 前显式 ForceQuit() + 关闭 close-to-tray，
+      // 避免 OnBeforeClose 把"用户明确退出"误解为"关闭到托盘"。
       'exit': async () => {
         const dirty = ed.dirtyTabs
         if (dirty.length > 0) {
@@ -123,6 +125,11 @@ export function useCommands(deps: {
           await deps.saveAll()
         }
         deps.saveSession()
+        // ForceQuit：让 main.go OnBeforeClose 直接放行；同时关闭 close-to-tray
+        // 防止"enabled=true 时被 WindowHide"。
+        const { ForceQuit, SetCloseToTray } = await import('../../wailsjs/go/main/App')
+        await SetCloseToTray(false)
+        ForceQuit()
         const { Quit } = await import('../../wailsjs/runtime/runtime')
         Quit()
       },
@@ -223,10 +230,12 @@ export function useCommands(deps: {
       'le-LF': () => { if (ed.activeTab) ed.updateTabLineEnding(ed.activeTab.id, 'LF') },
       'le-CR': () => { if (ed.activeTab) ed.updateTabLineEnding(ed.activeTab.id, 'CR') },
       'lang-zh': () => {
-        if (ss.config) { ss.config.ui.language = 'zh-CN'; ss.saveConfig(); ElMessage.success('已切换为中文，重启后生效') }
+        // v2.1 修 bug #7：明确告知"部分字符串需重启"（模板中文化字符串是硬编码的）
+        if (ss.config) { ss.config.ui.language = 'zh-CN'; ss.saveConfig(); ElMessage.success('语言设置已保存，部分界面字符串需重启 EasyText 后生效') }
       },
       'lang-en': () => {
-        if (ss.config) { ss.config.ui.language = 'en-US'; ss.saveConfig(); ElMessage.success('Switched to English. Restart to apply.') }
+        // v2.1 修 bug #7：与 lang-zh 文案对称
+        if (ss.config) { ss.config.ui.language = 'en-US'; ss.saveConfig(); ElMessage.success('Language saved. Some UI strings require restarting EasyText to take effect.') }
       },
       'set-lang': (lang: string) => {
         if (ed.activeTab) { ed.activeTab.language = lang.toLowerCase(); ElMessage.success('语言: ' + lang) }
@@ -313,7 +322,8 @@ export function useCommands(deps: {
       'new-window': () => ElMessage.info('多窗口暂不支持，请启动新实例'),
       'open-view': deps.manageFavorites,
       'manage-fav': deps.manageFavorites,
-      'fav-empty': () => ElMessage.info('收藏夹为空'),
+      // v2.1 修 bug #8：移除 fav-empty 占位 toast；
+      // 收藏夹为空时由 RecentFilesDialog 的空状态组件展示，不再弹 toast。
       'copy-line': () => execEd('line-dup'),
       'cut-line': () => execEd('line-cut'),
       'clear-all-marks': () => execEd('clear-all-marks'),
@@ -345,12 +355,13 @@ export function useCommands(deps: {
         if (typeof path === 'string' && path) deps.openFilePath(path)
       },
       'recent-empty': () => ElMessage.info('暂无最近文件'),
-      // 修复原 useCommands 'clear-history' 误命名（之前只清收藏夹）—— 现清空最近文件
+      // v2.1 修 bug #8：菜单文案"清空历史记录"实际是"清空最近文件"，
+      // 文案误导用户（误以为清空其它历史），改成与行为一致的提示。
       'clear-history': async () => {
         try {
           const { ClearRecentFiles } = await import('../../wailsjs/go/main/App')
           await ClearRecentFiles()
-          ElMessage.success('最近文件已清空')
+          ElMessage.success('最近文件记录已清空')
           document.dispatchEvent(new CustomEvent('recent-updated'))
         } catch (e: any) {
           ElMessage.error('清空失败：' + (e?.message || ''))
