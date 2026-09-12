@@ -527,6 +527,9 @@ const openItems = computed(() => {
   left: 0;
   z-index: 1100;
   min-width: 240px;
+  max-height: calc(100vh - var(--et-h-menu) - 8px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: var(--et-space-1);
   background: var(--et-bg-elevated);
   border: 1px solid var(--et-border);
@@ -605,6 +608,9 @@ const openItems = computed(() => {
   top: -5px;
   z-index: 1100;
   min-width: 200px;
+  max-height: calc(100vh - var(--et-h-menu) - 8px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: var(--et-space-1);
   background: var(--et-bg-elevated);
   border: 1px solid var(--et-border);
