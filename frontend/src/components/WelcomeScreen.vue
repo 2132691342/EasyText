@@ -11,7 +11,7 @@ const fileStore = useFileStore()
 
 const emit = defineEmits(['open-diff', 'open-converter'])
 
-// 🆕 V2.0.0 最近访问
+// 最近访问
 const recentFiles = ref<RecentEntry[]>([])
 const recentFolders = ref<RecentEntry[]>([])
 

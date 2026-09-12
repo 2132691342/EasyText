@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 /**
- * 格式化转换器 v2.1 — ModalOverlay 统一
+ * 格式化转换器 — ModalOverlay 统一
  */
 import { ref, computed, watch } from 'vue'
 import { useEditorStore, useFormatConverterStore } from '@/stores'
@@ -27,7 +27,7 @@ const FORMATS: { value: Fmt; label: string }[] = [
 
 const activeToolTab = ref<ToolTab>('convert')
 
-// 🆕 V2.0.0 从 useCommands 接收初始 tab（专用 store 替代 window 全局）
+// 从 useCommands 接收初始 tab（专用 store 替代 window 全局）
 watch(() => props.visible, (v) => {
   if (v) {
     const tab = useFormatConverterStore().consume()
@@ -145,7 +145,7 @@ function openInNewTab() {
   emit('close')
 }
 
-// ========== 🆕 V2.0.0 JSONPath 查询 ==========
+// ========== JSONPath 查询 ==========
 const jpPath = ref('')
 const jpResults = ref<tools.JSONPathResult[]>([])
 const jpError = ref('')
@@ -183,7 +183,7 @@ async function copyJsonPathResults() {
   }
 }
 
-// ========== 🆕 V2.0.0 JSON 转结构体 ==========
+// ========== JSON 转结构体 ==========
 const jsLang = ref('go')
 const jsRootName = ref('Root')
 const jsOutput = ref('')
@@ -227,7 +227,7 @@ async function copyStructOutput() {
   }
 }
 
-// ========== 🆕 V2.0.0 JSON 结构化 Diff ==========
+// ========== JSON 结构化 Diff ==========
 const jdLeft = ref('')
 const jdRight = ref('')
 const jdResult = ref<tools.JSONDiffResult | null>(null)
@@ -381,7 +381,7 @@ function getDiffTypeClass(type: string): string {
           </div>
         </template>
 
-        <!-- ========== 🆕 V2.0.0 JSONPath 查询 Tab ========== -->
+        <!-- ========== JSONPath 查询 Tab ========== -->
         <template v-if="activeToolTab === 'jsonpath'">
           <div class="flex items-center gap-2 px-4 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#252526] flex-shrink-0">
             <span class="text-xs text-gray-500">JSONPath 表达式:</span>
@@ -425,7 +425,7 @@ function getDiffTypeClass(type: string): string {
           </div>
         </template>
 
-        <!-- ========== 🆕 V2.0.0 JSON 转结构体 Tab ========== -->
+        <!-- ========== JSON 转结构体 Tab ========== -->
         <template v-if="activeToolTab === 'json-to-struct'">
           <div class="flex items-center gap-2 px-4 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#252526] flex-shrink-0">
             <span class="text-xs text-gray-500">语言:</span>
@@ -462,7 +462,7 @@ function getDiffTypeClass(type: string): string {
           </div>
         </template>
 
-        <!-- ========== 🆕 V2.0.0 JSON 结构化 Diff Tab ========== -->
+        <!-- ========== JSON 结构化 Diff Tab ========== -->
         <template v-if="activeToolTab === 'json-diff'">
           <div class="flex items-center gap-2 px-4 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#252526] flex-shrink-0">
             <span class="text-xs text-gray-500">按字段级对比两个 JSON 对象</span>

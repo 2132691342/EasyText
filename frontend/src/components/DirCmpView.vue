@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 /**
- * 目录对比 v2.1 — ModalOverlay 统一
+ * 目录对比 — ModalOverlay 统一
  */
 import { ref } from 'vue'
 import { OpenDirectoryDialog, CompareDirectories } from '../../wailsjs/go/main/App'

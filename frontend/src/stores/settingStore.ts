@@ -73,7 +73,7 @@ export const useSettingStore = defineStore('setting', () => {
     },
   })
 
-  // ============ 19 套主题 - 匹配 notepad-- styleset.cpp ============
+  // ============ 19 套主题 ============
   const availableThemes: { key: ThemeName; name: string; isDark: boolean }[] = [
     { key: 'Default', name: 'Default (Light)', isDark: false },
     { key: 'DarkDefault', name: 'Dark Default', isDark: true },
@@ -140,7 +140,7 @@ export const useSettingStore = defineStore('setting', () => {
     if (colors.isDark) html.classList.add('dark')
     else html.classList.remove('dark')
 
-    // CSS 变量 - 匹配 notepad-- mystyle.qss
+    // CSS 变量应用
     const vars: [string, string][] = [
       ['--theme-bg', colors.bg],
       ['--theme-fg', colors.fg],
@@ -213,7 +213,7 @@ export const useSettingStore = defineStore('setting', () => {
     }, 300) // 拖拽停顿 300ms 后才落盘
   }
 
-  // v2.1：侧栏整体宽度记忆（与 setFileTreeWidth 同模式）
+  // 侧栏整体宽度记忆（与 setFileTreeWidth 同模式）
   let sidebarWidthTimer: ReturnType<typeof setTimeout> | null = null
   function setSidebarWidth(width: number) {
     config.value.ui.fileTreeWidth = width
@@ -253,7 +253,7 @@ export const useSettingStore = defineStore('setting', () => {
     saveConfig()
   }
 
-  // ============ 快捷键管理（notepad-- shortcutkeymgr）============
+  // ============ 快捷键管理 ============
   // DEFAULT_SHORTCUTS 既是初值，也是「恢复默认」的基准。
   const DEFAULT_SHORTCUTS: ShortcutDef[] = [
     { id: 'new-file', name: '新建文件', category: '文件', defaultKey: 'Ctrl+N', currentKey: 'Ctrl+N' },
@@ -346,7 +346,7 @@ export const useSettingStore = defineStore('setting', () => {
     return pressed === key
   }
 
-  // ============ 🆕 V2.0.0 自动保存模式 ============
+  // ============ 自动保存模式 ============
   // 直接绑定到 config.editor.autoSaveMode：此前是纯内存 ref，重启后回落到
   // interval，使「失焦自动保存」在用户看来根本没有生效过。
   const autoSaveMode = computed<'interval' | 'blur' | 'both'>({
@@ -358,7 +358,7 @@ export const useSettingStore = defineStore('setting', () => {
     autoSaveMode.value = mode
   }
 
-  // ============ 🆕 V2.0.0 自动主题切换 ============
+  // ============ 自动主题切换 ============
   const autoTheme = computed(() => config.value.theme.autoTheme)
   // 用 AbortController 替代 addEventListener/removeEventListener 引用匹配，
   // 避免 disable 时无法真正移除监听器导致"自动主题关闭后系统暗色切换仍生效"的 bug。
@@ -394,7 +394,7 @@ export const useSettingStore = defineStore('setting', () => {
     autoThemeAbort = null
   }
 
-  // ============ 🆕 V2.0.0 状态栏/工具栏自定义 ============
+  // ============ 状态栏/工具栏自定义 ============
   // 开关后必须落盘：否则重启恢复默认，用户会认为勾选框失灵
   function toggleStatusBarItem(item: string) {
     config.value.ui.statusBarItems[item] = !config.value.ui.statusBarItems[item]
@@ -406,7 +406,7 @@ export const useSettingStore = defineStore('setting', () => {
     void saveConfig()
   }
 
-  // ============ 🆕 V2.0.0 忽略模式 ============
+  // ============ 忽略模式 ============
   function setIgnorePatterns(patterns: string[]) {
     config.value.file.ignorePatterns = patterns
   }
@@ -433,7 +433,6 @@ export const useSettingStore = defineStore('setting', () => {
     setEditorFontSize, setEditorFontFamily, setTabSize, setAutoSave,
     saveConfig,
     getShortcut, updateShortcut, resetShortcuts, matchShortcut,
-    // 🆕 V2.0.0
     autoSaveMode, setAutoSaveMode,
     autoTheme, setAutoTheme, enableAutoTheme, disableAutoTheme,
     toggleStatusBarItem, toggleToolbarItem,

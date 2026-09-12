@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 /**
- * 剪贴板历史 v2.1
+ * 剪贴板历史
  *  - 用 ModalOverlay 替代手撸 Teleport
  */
 import { useEditorStore } from '@/stores'

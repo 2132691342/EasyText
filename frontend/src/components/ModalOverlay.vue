@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 /**
- * ModalOverlay v2.1 — 通用模态浮层
+ * ModalOverlay — 通用模态浮层
  *
  * 设计目标（M2 对话框统一）：
  *  - 标准化 size: sm/md/lg/xl/full（也兼容旧 width/height）

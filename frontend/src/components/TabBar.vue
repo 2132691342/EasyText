@@ -1,12 +1,9 @@
 <script lang="ts" setup>
 /**
- * Tab Bar v2.1
+ * Tab Bar
  *
- * 设计目标（对标 Notepad-- / Sublime Text）：
- *  - 高度 30px，与菜单/工具栏阶梯一致。
- *  - 关闭按钮常显（Sublime 风），hover 高亮；脏文件右上小圆点 (.et-dot-warn)。
- *  - tab 宽度 90–160（紧凑）；拖拽时源 tab 半透明 + 插入位置 2px 主色条。
- *  - tab-actions 颜色统一 token。
+ *  - 高度 30px；关闭按钮常显，hover 高亮；脏文件右上小圆点 (.et-dot-warn)。
+ *  - tab 宽度 90–160；拖拽时源 tab 半透明 + 插入位置 2px 主色条。
  */
 import { ref, nextTick, onMounted, onUnmounted } from 'vue'
 import { useEditorStore, useFileStore } from '@/stores'
@@ -537,7 +534,7 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
   flex-shrink: 0;
 }
 
-/* 关闭按钮：常显，hover 时高亮（Sublime 风） */
+/* 关闭按钮：常显，hover 时高亮 */
 .tab-close {
   width: 18px;
   height: 18px;

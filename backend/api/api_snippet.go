@@ -4,7 +4,7 @@ import (
 	"easy-text/backend/tools"
 )
 
-// === 代码片段 API（🆕 V2.0.0 第二阶段） ===
+// === 代码片段 API ===
 //
 // snippetService 在 Startup 阶段 fail-fast 保证非 nil（依赖 DB），
 // 此处不再重复 nil 守卫。

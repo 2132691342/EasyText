@@ -28,11 +28,11 @@ func InitDatabase(dbPath string) error {
 	// Auto migrate schemas
 	err = DB.AutoMigrate(
 		&Setting{},
-		&Draft{},            // 🆕 V2.0.0
-		&Snippet{},          // 🆕 V2.0.0
-		&Bookmark{},         // 🆕 V2.0.0
-		&RecentEntry{},      // 🆕 V2.0.0
-		&RemoteConnection{}, // 🆕 V2.0.0
+		&Draft{},
+		&Snippet{},
+		&Bookmark{},
+		&RecentEntry{},
+		&RemoteConnection{},
 	)
 	if err != nil {
 		return err
@@ -41,7 +41,7 @@ func InitDatabase(dbPath string) error {
 	return nil
 }
 
-// 🆕 V2.0.0 数据模型
+// 数据模型
 
 // Draft 草稿表
 type Draft struct {
@@ -85,7 +85,7 @@ type RecentEntry struct {
 	AccessedAt int64  `gorm:"autoCreateTime:milli;index:idx_recent_time"`
 }
 
-// RemoteConnection 远程连接配置表（🆕 V2.0.0）
+// RemoteConnection 远程连接配置表
 type RemoteConnection struct {
 	ID                  string `gorm:"primaryKey;size:64"`
 	Name                string `gorm:"not null;size:256"`

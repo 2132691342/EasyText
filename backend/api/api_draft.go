@@ -4,7 +4,7 @@ import (
 	"easy-text/backend/tools"
 )
 
-// === 草稿系统 API（🆕 V2.0.0 第一阶段） ===
+// === 草稿系统 API ===
 //
 // draftService 在 Startup 阶段 fail-fast 保证非 nil（依赖 DB），
 // 此处不再重复 nil 守卫。

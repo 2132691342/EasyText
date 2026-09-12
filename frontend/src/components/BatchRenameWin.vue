@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 /**
- * 批量重命名 v2.1 — ModalOverlay 统一
+ * 批量重命名 — ModalOverlay 统一
  */
 import { ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'

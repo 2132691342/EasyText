@@ -1,7 +1,7 @@
 # EasyText 顶层 Makefile — 本地开发命令
 #
-# Wails 应用需要 Windows 桌面环境运行 npm run dev / wails dev。
-# CI 在 Linux 上跑（见 .github/workflows/ci.yml）。
+# Wails 应用需要 Windows 桌面环境运行 wails dev。
+# CI 的 backend job 在 windows runner 上跑（见 .github/workflows/ci.yml）。
 
 .PHONY: help backend frontend test lint ci-build clean
 
@@ -11,7 +11,7 @@ help:
 	@echo "  make frontend    - 前端 type-check/lint/build"
 	@echo "  make test        - 后端单元测试"
 	@echo "  make lint        - 前端 ESLint"
-	@echo "  make ci-build    - CI 同等检查（Linux 子集）"
+	@echo "  make ci-build    - CI 同等检查"
 	@echo "  make clean       - 清理构建产物"
 
 backend:

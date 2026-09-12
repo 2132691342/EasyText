@@ -14,28 +14,9 @@ import (
 	"easy-text/backend/utils"
 )
 
-// Handler 处理前后端 API 交互，是 Wails 绑定的核心结构体。
-// 仿 notepad-- ccnotepad.h 的架构设计，按功能模块组织：
-//
-//	api_files.go      - 文件 I/O、Office 转换
-//	api_dirs.go       - 目录操作
-//	api_config.go     - 配置 & 系统设置
-//	api_json.go       - JSON 工具
-//	api_diff.go       - 文档对比
-//	api_encoding.go   - 编码工具
-//	api_convert.go    - 格式转换
-//	api_dialogs.go    - 对话框 & 系统信息
-//	api_macro.go      - 宏录制/回放
-//	api_find.go       - 查找替换服务
-//	api_draft.go      - 草稿系统（🆕 V2.0.0）
-//	api_snippet.go    - 代码片段（🆕 V2.0.0）
-//	api_bookmark.go   - 书签持久化（🆕 V2.0.0）
-//
-// 渐进拆分（ch11 ISP）：
-//
-//	Handler 通过嵌入 *RecentHandler / *FileAssocHandler 等"小组合器"
-//	把领域方法提升为自身可被 Wails 反射的成员。详细拆分骨架见
-//	handler_subsystem.go，包含未来可继续拆分的所有候选子模块。
+// Handler 是 Wails 绑定的核心结构体，方法按功能模块拆分在 api_*.go。
+// 子 handler（Recent/FileAssoc/Search）通过 Go 嵌入把方法提升到 Handler，
+// 使其能被 Wails 反射；拆分骨架见 handler_subsystem.go。
 type Handler struct {
 	Ctx context.Context
 
@@ -55,15 +36,15 @@ type Handler struct {
 	macroService   *tools.MacroService
 	compareService *tools.CompareService
 
-	// 🆕 V2.0.0 仍直接持有的服务（待后续拆分到 Draft/Snippet/Bookmark/Workspace 子 handler）：
+	// 其余直接持有的服务：
 	draftService    *tools.DraftService
 	snippetService  *tools.SnippetService
 	bookmarkService *tools.BookmarkService
 	scriptService   *tools.ScriptService
 
-	// v2.1：应用版本号（修 bug #4：原 GetAppVersion 硬编码 "1.0.0"）
-	// 由 NewHandler 在启动时从 wails.json 读取 info.productVersion 注入；
-	// 找不到时回退 "0.0.0"，便于诊断"前端拿到的是回退值"。
+	// 应用版本号
+	// 由 NewHandler 从 wails.json 的 info.productVersion 读取；
+	// 找不到时回退 "0.0.0"。
 	appVersion string
 }
 
@@ -134,7 +115,7 @@ func loadAppVersionFromWailsJSON() string {
 // 通过 fail-fast，依赖 DB 的 4 个服务在 Startup 之后保证非 nil，
 // 各 API 方法无需重复 nil 守卫。
 //
-// 🆕 配置依赖注入（Step 5）：构造 config.Source 适配 *ConfigManager，
+// 构造 config.Source 适配 *ConfigManager，
 // 把全局单例通过接口注入到 RecentService，便于未来切接口做单测。
 func (h *Handler) Startup(ctx context.Context) {
 	h.Ctx = ctx
@@ -154,7 +135,7 @@ func (h *Handler) Startup(ctx context.Context) {
 		// 初始化数据库（fail-fast）
 		dbPath := filepath.Join(configDir, "easytext.db")
 		if err := config.InitDatabase(dbPath); err != nil {
-			panic(fmt.Sprintf("Failed to initialize database (required for v2.0.0 services): %v", err))
+			panic(fmt.Sprintf("Failed to initialize database: %v", err))
 		}
 
 		// 初始化配置（非致命）
@@ -185,7 +166,7 @@ func (h *Handler) Startup(ctx context.Context) {
 		h.scriptService = tools.NewScriptService(filepath.Join(os.TempDir(), "easytext-scripts"))
 	}
 
-	utils.Log.Info("Application started successfully (v2.0.0)")
+	utils.Log.Info("Application started successfully")
 }
 
 // Shutdown 应用关闭时调用

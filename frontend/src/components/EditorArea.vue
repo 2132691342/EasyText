@@ -5,7 +5,7 @@ import TabBar from './TabBar.vue'
 import CodeEditor from './editor/CodeEditor.vue'
 import WelcomeScreen from './WelcomeScreen.vue'
 import ImageViewer from './viewer/ImageViewer.vue'
-import ImageEditor from './viewer/ImageEditor.vue'  // 🆕 V2.0.0
+import ImageEditor from './viewer/ImageEditor.vue'
 import HexViewer from './viewer/HexViewer.vue'
 import LogViewer from './viewer/LogViewer.vue'
 
@@ -36,7 +36,7 @@ const viewType = computed(() => activeTab.value?.viewType || 'code')
         :tab="activeTab"
       />
 
-      <!-- 🆕 V2.0.0 Image editor (裁剪/旋转/缩放/格式转换) -->
+      <!-- Image editor (裁剪/旋转/缩放/格式转换) -->
       <ImageEditor
         v-else-if="activeTab && viewType === 'image-edit'"
         :file-path="activeTab.path"
@@ -48,7 +48,7 @@ const viewType = computed(() => activeTab.value?.viewType || 'code')
         :tab="activeTab"
       />
 
-      <!-- 🆕 V2.0.0 Log viewer -->
+      <!-- Log viewer -->
       <LogViewer
         v-else-if="activeTab && viewType === 'log'"
         :tab="activeTab"

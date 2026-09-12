@@ -1,7 +1,4 @@
-// ============================================================
-// EasyText 类型定义 - 完全仿照 notepad-- 数据模型
-// 参考：notepad-- src/cceditor/ccnotepad.h, src/rcglobal.h
-// ============================================================
+// EasyText 全局类型定义
 
 // ---------- 文件相关 ----------
 export interface FileInfo {
@@ -29,7 +26,7 @@ export interface WriteResult {
   success: boolean
 }
 
-// 文件树节点（notepad-- filemanager）
+// 文件树节点
 export interface TreeNode {
   path: string
   name: string
@@ -44,7 +41,7 @@ export interface FileTree {
   basePath: string
 }
 
-// ---------- 配置类型（notepad-- nddsetting）----------
+// ---------- 配置类型 ----------
 export interface ColumnModeConfig {
   numberStart: number
   numberStep: number
@@ -77,7 +74,7 @@ export interface EditorConfig {
   columnModeConfig: ColumnModeConfig
 }
 
-// 19 套主题 - 完全匹配 notepad-- styleset.cpp
+// 19 套主题定义
 export type ThemeName =
   | 'Default'       // 默认亮色
   | 'DarkDefault'   // 默认暗色
@@ -129,7 +126,7 @@ export interface UIConfig {
   statusBarItems: Record<string, boolean>
   toolbarItems: Record<string, boolean>
   recentFilesLimit: number
-  // 🆕 关闭按钮行为：true 时最小化到托盘；false 时直接退出
+  // 关闭按钮行为：true 时最小化到托盘；false 时直接退出
   closeToTray?: boolean
   // 启动时是否恢复上次会话打开的文件
   restoreSession?: boolean
@@ -145,7 +142,7 @@ export interface AppConfig {
   shortcuts?: ShortcutDef[]
 }
 
-// ---------- 编辑器标签页（notepad-- TabInfo）----------
+// ---------- 编辑器标签页 ----------
 export type TabViewType = 'code' | 'image' | 'image-edit' | 'hex' | 'log' | 'markdown'
 
 export interface EditorTab {
@@ -164,7 +161,7 @@ export interface EditorTab {
   viewType: TabViewType
 }
 
-// ---------- 宏系统（notepad-- 宏录制/回放）----------
+// ---------- 宏系统 ----------
 export interface MacroStep {
   type: 'insert' | 'delete' | 'replace' | 'selection' | 'cursor' | 'command' | 'find'
   text?: string
@@ -198,7 +195,7 @@ export interface MacroState {
   currentLoop: number
 }
 
-// ---------- 查找替换（notepad-- findwin）----------
+// ---------- 查找替换 ----------
 export interface FindReplaceOptions {
   search: string
   replace: string
@@ -297,7 +294,7 @@ export interface CompareRecord {
   timestamp: number
 }
 
-// ---------- 编码相关（notepad-- Encode.h）----------
+// ---------- 编码相关 ----------
 export interface EncodingInfo {
   name: string
   displayName: string
@@ -335,7 +332,7 @@ export interface RenamePreview {
   newPath: string
 }
 
-// ---------- 语言/语法（notepad-- langstyledefine）----------
+// ---------- 语言/语法 ----------
 export interface LanguageStyle {
   name: string
   extensions: string[]
@@ -460,7 +457,7 @@ export interface HexState {
 // ---------- Markdown 预览 ----------
 export type MdViewMode = 'edit' | 'preview' | 'split'
 
-// ========== 🆕 V2.0.0 新增类型 ==========
+// ========== 扩展类型 ==========
 
 // ---------- 草稿系统 ----------
 export interface DraftEntry {

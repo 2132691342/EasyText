@@ -68,10 +68,7 @@ export function getFileExtension(filename: string): string {
   return ext
 }
 
-// ============================================================
-// 80+ 语言扩展名映射 - 完全匹配 notepad-- extlexermanager
-// 参考: notepad-- src/langstyledefine.h 及 qscilexer*.cpp
-// ============================================================
+// 扩展名 → 语言映射
 export function getLanguageFromExtension(ext: string): string {
   const langMap: Record<string, string> = {
     // --- C 家族 ---
@@ -271,10 +268,7 @@ export async function copyToClipboard(text: string): Promise<boolean> {
   try { await navigator.clipboard.writeText(text); return true } catch { return false }
 }
 
-// ============================================================
-// 19 套主题定义 - 完全匹配 notepad-- styleset.cpp
-// 参考: notepad-- src/styleset.h/.cpp, mystyle.qss
-// ============================================================
+// 19 套主题定义
 export interface ThemeColors {
   bg: string
   fg: string

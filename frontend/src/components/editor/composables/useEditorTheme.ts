@@ -106,7 +106,7 @@ export function useEditorTheme(
         outline: '1px solid ' + c.accent,
       },
       '&.cm-focused .cm-matchingBracket': { backgroundColor: c.bracketMatch },
-      // 🆕 V2.0.0 标签配对高亮
+      // 标签配对高亮
       '.cm-matchingTag': {
         backgroundColor: c.bracketMatch,
         outline: '1px solid ' + c.accent,

@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 /**
- * 批量编码转换 v2.1 — ModalOverlay 统一
+ * 批量编码转换 — ModalOverlay 统一
  */
 import { ref, watch } from 'vue'
 import {
@@ -28,7 +28,6 @@ const logText = ref('')
 const loading = ref(false)
 
 // 值必须与后端 SupportedEncodings 的 Name 完全一致。
-// 此前写成 UTF-16-LE / UTF-8-BOM 等后端不识别的名字，选中后转换必然失败。
 const targetCodeOptions = [
   { value: 'UTF-8', label: 'UTF-8' },
   { value: 'UTF-16LE', label: 'UTF-16 LE' },

@@ -32,7 +32,7 @@ type FindInFileResult struct {
 	Count   int         `json:"count"`
 }
 
-// FindOptions 查找选项（仿 notepad-- findwin）
+// FindOptions 查找选项
 type FindOptions struct {
 	Search        string `json:"search"`
 	Replace       string `json:"replace"`
@@ -340,7 +340,7 @@ func isBinaryFilePath(path string) bool {
 	return binaryExts[ext]
 }
 
-// 🆕 V2.0.0 全局搜索替换
+// 全局搜索替换
 
 // SearchInFiles 在指定文件列表中搜索。
 //

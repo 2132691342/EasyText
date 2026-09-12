@@ -1,23 +1,16 @@
 <script lang="ts" setup>
 /**
- * CodeEditor v3.1（M5 回归修复版）
+ * CodeEditor — 编辑器容器
  *
  * 架构：容器 + composables/（theme/language/completion/bookmark/columnMode/macro/markdown）
  *       + ext/（keymap/context-menu）
  *
- * M5 修复的回归（对照 49b28bc 原版逐函数核对）：
- *   1. undo/redo 改回 CodeMirror 命令（execCommand 是错误实现）
- *   2. gotoPrev/NextPosition 改回 goBackPosition/goForwardPosition
- *   3. minimap viewport 恢复 scrollTop/scrollHeight/clientHeight + scroll rAF 监听
- *   4. saveEditorState 补 updateScrollPosition
- *   5. restoreEditorState 补 scrollPosition 恢复
- *   6. tab 切换恢复 in-place content swap（不再销毁重建，保留 undo 历史）
- *   7. formatJson/minify/validate 改回 FormatJSON/MinifyJSON/ValidateJSON Wails API
- *   8. formatXml 恢复原版内置 prettyPrintXml（移除 xml-formatter 依赖）
- *   9. 补齐丢失的命令分支：comment-line/block、clear-all-marks、toggle-word-wrap、
- *      toggle-whitespace、toggle-eol、toggle-minimap、spaces-all-to-tabs、
- *      spaces-leading-to-tabs、column-mode（toggle 语义）
- *   10. toggleEol 恢复 '¶' content 值；toggleShowAll 同时切 whitespace+eol
+ * 关键机制：
+ *  - 各关注点一个 compartment，运行时切换走 dispatch reconfigure，不销毁重建
+ *  - tab 切换就地换绑文档（保留 undo 历史），换绑前后保存/恢复滚动位置
+ *  - 内容变更防抖同步 editorStore，同时采集宏步骤与光标位置
+ *  - undo/redo 走 CodeMirror 命令；位置前进/后退走 goBackPosition/goForwardPosition
+ *  - minimap 视口矩形 {scrollTop, scrollHeight, clientHeight}，rAF 滚动同步
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { ElMessage } from 'element-plus'

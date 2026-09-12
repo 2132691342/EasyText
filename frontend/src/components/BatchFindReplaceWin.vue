@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 /**
- * 批量查找替换 v2.1 — ModalOverlay 统一
+ * 批量查找替换 — ModalOverlay 统一
  */
 import { ref, watch, computed } from 'vue'
 import { useEditorStore } from '@/stores'

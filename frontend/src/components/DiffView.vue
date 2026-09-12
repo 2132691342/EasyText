@@ -21,7 +21,7 @@ const diffBlocks = ref<any[]>([])
 const isComparing = ref(false)
 const currentDiffIndex = ref(-1)
 
-// 🆕 V2.0.0 视图模式
+// 视图模式
 const viewMode = ref<'side' | 'unified'>('side')
 
 const diffStats = computed(() => {
@@ -74,8 +74,7 @@ async function openRightFile() {
 
 /**
  * 对比规则（「对比 → 对比规则」对话框写入 localStorage）。
- * 此前只有写入方、没有任何读取方，用户设置的忽略空白/空行规则完全不生效。
- * 后端 CompareDiffLines 不支持选项，因此在前端预处理两侧文本，行为等价且即时生效。
+ * 后端 CompareDiffLines 不支持选项，忽略空白/空行等规则在前端预处理两侧文本时生效。
  */
 interface CmpRules {
   compareMode: 'before' | 'back' | 'all'
@@ -136,8 +135,7 @@ const currentBlockPos = computed(() => {
 })
 
 /**
- * 跳到上一处/下一处差异。
- * 此前只改 currentDiffIndex，界面既不高亮也不滚动，用户点了看不到任何变化。
+ * 跳到上一处/下一处差异：更新索引并同步高亮与滚动。
  */
 async function gotoDiff(dir: 1 | -1) {
   const n = changedBlocks.value.length
@@ -210,7 +208,7 @@ const rightLines = computed(() => {
   return lines
 })
 
-// 🆕 V2.0.0 字符级差异高亮
+// 字符级差异高亮
 const showCharDiff = ref(false)
 // 存储每个 diff block 中修改行的字符级 HTML 渲染结果
 // key: `${blockIndex}:${lineIndexInBlock}`, value: HTML string
@@ -271,7 +269,7 @@ watch(diffBlocks, async () => {
   }
 })
 
-// 🆕 V2.0.0 统一视图
+// 统一视图
 const unifiedLines = computed(() => {
   const lines: Array<{ oldLine: number | null; newLine: number | null; content: string; type: string; blockIdx: number; lineIdx: number }> = []
   let bi = 0
@@ -293,7 +291,7 @@ const unifiedLines = computed(() => {
   return lines
 })
 
-// 🆕 V2.0.0 导出 HTML
+// 导出 HTML
 async function exportDiff() {
   try {
     const path = await SaveFileDialog('diff.html')
@@ -465,7 +463,7 @@ function escapeHtml(s: string): string {
         </div>
       </div>
 
-      <!-- 🆕 V2.0.0 统一视图 -->
+      <!-- 统一视图 -->
       <div v-else class="flex-1 overflow-auto">
         <div v-if="diffBlocks.length === 0" class="p-4 text-xs text-gray-400 font-mono whitespace-pre-wrap">{{ leftContent }}</div>
         <table v-else class="w-full text-xs font-mono border-collapse">
@@ -499,7 +497,7 @@ function escapeHtml(s: string): string {
 </template>
 
 <style scoped>
-/* ===== v2.1 — token 化的 DiffView 容器 ===== */
+/* DiffView 容器 */
 .dv {
   display: flex;
   flex-direction: column;

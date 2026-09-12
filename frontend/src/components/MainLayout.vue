@@ -37,7 +37,6 @@ import FormatConverter from './FormatConverter.vue'
 import FileCmpRuleWin from './FileCmpRuleWin.vue'
 import DirCmpView from './DirCmpView.vue'
 import ClipboardHistoryWin from './ClipboardHistoryWin.vue'
-// 🆕 V2.0.0
 import RegexTester from './RegexTester.vue'
 import SnippetPanel from './SnippetPanel.vue'
 import BookmarkPanel from './BookmarkPanel.vue'
@@ -67,7 +66,7 @@ const showSnippetPanel = ref(false)
 const showBookmarkPanel = ref(false)
 const showFunctionList = ref(false)
 const showFileMonitor = ref(false)
-// 🆕 V2.0.0 侧边栏多面板 Tab 切换
+// 侧边栏多面板 Tab 切换
 type SidebarTab = 'files' | 'tree' | 'snippets' | 'bookmarks' | 'functions' | 'monitor'
 const sidebarTab = ref<SidebarTab>('tree')
 function switchSidebarTab(tab: SidebarTab) {
@@ -93,7 +92,7 @@ watch(showFileMonitor, (v) => { if (v) sidebarTab.value = 'monitor' })
 const panelWidth = ref<number>(250)
 const resizing = ref(false)
 
-// v2.1：从持久化配置恢复侧栏宽度（与 setSidebarWidth 配对）
+// 从持久化配置恢复侧栏宽度（与 setSidebarWidth 配对）
 if (ss.config?.ui?.fileTreeWidth && typeof ss.config.ui.fileTreeWidth === 'number') {
   panelWidth.value = ss.config.ui.fileTreeWidth
 }
@@ -117,7 +116,7 @@ const showFormatConverter = ref(false)
 const showCmpRule = ref(false)
 const showDirCmp = ref(false)
 const showClipboardHistory = ref(false)
-// 🆕 V2.0.0
+
 const showRegexTester = ref(false)
 const showScriptManager = ref(false)
 const showColorPicker = ref(false)
@@ -235,13 +234,13 @@ function startAutoSave() {
     autoSaveTimer = setInterval(async () => {
       for (const t of ed.dirtyTabs) {
         if (t.path) {
-          // 🆕 V2.0.0: 自动保存到草稿存储
+          // 自动保存到草稿存储
           try { await AutoSaveDraft(t.path, t.content, t.encoding, t.lineEnding) } catch { /* ignore */ }
         }
       }
     }, sec)
   }
-  // 🆕 V2.0.0: 失焦自动保存（正确读取 settingStore 的 autoSaveMode）
+  // 失焦自动保存（读取 settingStore 的 autoSaveMode）
   if (ss.autoSaveMode === 'blur' || ss.autoSaveMode === 'both') {
     window.addEventListener('blur', onWindowBlur)
   }
@@ -251,7 +250,7 @@ function stopAutoSave() {
   window.removeEventListener('blur', onWindowBlur)
 }
 
-// 🆕 V2.0.0 失焦自动保存
+// 失焦自动保存
 async function onWindowBlur() {
   for (const t of ed.dirtyTabs) {
     if (t.path) {
@@ -313,13 +312,13 @@ function resizeMove(e: MouseEvent) {
 function resizeEnd() {
   if (!resizing.value) return
   resizing.value = false
-  // v2.1：拖拽结束后落盘（store 内部已 300ms debounce，再触发一次即可）
+  // 拖拽结束后落盘（store 内部已 300ms debounce，再触发一次即可）
   ss.setSidebarWidth(panelWidth.value)
   resizeCleanup()
   resizeCleanup = () => {}
 }
 
-// 🆕 V2.0.0 拖拽增强：支持文件/文件夹/文本拖放
+// 拖拽增强：支持文件/文件夹/文本拖放
 function onDrop(e: DragEvent) {
   e.preventDefault()
   const fs = e.dataTransfer?.files
@@ -343,7 +342,7 @@ function onDrop(e: DragEvent) {
 }
 function onDrag(e: DragEvent) { e.preventDefault() }
 
-// ---- Keyboard shortcuts (notepad-- complete shortcut mapping) ----
+// ---- Keyboard shortcuts ----
 // CodeMirror 拦截的键通过 ndd-key 事件传过来
 // document keydown 处理未被 CodeMirror 拦截的键（覆盖 LogViewer/HexViewer 等非 CodeEditor 视图，
 // 修复"打开日志文件按 Ctrl+F 无效"的 Bug）
@@ -394,7 +393,7 @@ async function gotoFindResult(r: any) {
   if (t) { ed.activateTab(t.id); setTimeout(() => execEd('scroll-to-line', r.line), 150) }
 }
 
-// 🆕 V2.0.0 辅助函数
+// 辅助函数
 function toggleAutoTheme() {
   if (ss.config) {
     ss.config.theme.autoTheme = !ss.config.theme.autoTheme
@@ -409,7 +408,7 @@ function toggleAutoTheme() {
   }
 }
 
-// 🆕 V2.0.0 统一最近访问入口：通过下拉对话框展示，替代旧版文本弹窗
+// 统一最近访问入口：通过下拉对话框展示，替代旧版文本弹窗
 async function showRecentFiles() { recentDialogTab.value = 'files'; showRecentDialog.value = true }
 async function showRecentFolders() { recentDialogTab.value = 'folders'; showRecentDialog.value = true }
 
@@ -444,7 +443,7 @@ async function manageDrafts() {
   }
 }
 
-// 🆕 V2.0.0 第四阶段：新增功能入口
+// 第四阶段：新增功能入口
 function showScriptManagerDialog() {
   showScriptManager.value = true
 }
@@ -553,7 +552,6 @@ async function selectCompareFile(side: 'left' | 'right') {
 }
 
 // 标签栏右键「选择左侧/右侧对比文件」：直接设置路径并打开对比视图。
-// 此前只派发事件但无人监听，用户点了只看到提示、对比窗口永不出现。
 function onTabCompareFile(side: 'left' | 'right') {
   return (e: Event) => {
     const path = (e as CustomEvent).detail as string
@@ -586,8 +584,7 @@ async function binaryCompare() {
 
 // ---- 宏：保存 / 多次运行 ----
 // 宏步骤在前端录制（editorStore.currentMacro），持久化走 localStorage
-// （saveMacros/loadMacros）。此前调后端 SaveCurrentMacro（后端录制的 steps
-// 恒为空）再 GetMacros 整体覆盖本地列表，导致用户录制的步骤被清空、回放无效。
+// （saveMacros/loadMacros），不经后端。
 async function saveCurrentMacro() {
   try {
     const { value: name } = await ElMessageBox.prompt('请输入宏名称', '保存宏', {
@@ -745,7 +742,7 @@ function onVisibilityChange() {
   if (!document.hidden) checkExternalChanges()
 }
 
-// v2.1 修 bug #6：监听后端 file:change 事件，直接触发 checkExternalChanges，
+// 监听后端 file:change 事件，直接触发 checkExternalChanges，
 // 不再仅依赖窗口焦点 / 可见性轮询。StartFileWatch 由 watchActiveTab() 在
 // activeTab.path 变化时启动。
 let cancelFileChangeListener: (() => void) | null = null
@@ -883,14 +880,14 @@ onMounted(() => {
   window.addEventListener('focus', onWindowFocus)
   setupOpenFileListener()
   setupBeforeCloseListener()
-  // v2.1 修 bug #6：监听后端 file:change 事件，不再只依赖 focus/visibility 轮询
+  // 监听后端 file:change 事件，不再只依赖 focus/visibility 轮询
   ;(async () => {
     const { EventsOn } = await import('../../wailsjs/runtime/runtime')
     cancelFileChangeListener = EventsOn('file:change', onFileChange)
   })()
   watchActiveTab()
-  ed.loadMacros() // 恢复上次保存的宏（此前从未调用，宏重启后必然丢失）
-  // 设置里的「关闭时恢复文件」开关此前没有任何消费方，这里接线
+  ed.loadMacros() // 恢复上次保存的宏
+  // 接线设置里的「关闭时恢复文件」开关
   if (ss.config?.ui?.restoreSession !== false) fileOps.restoreSession()
   startAutoSave()
 })
@@ -1027,7 +1024,7 @@ watch(() => ed.activeTab?.path, () => { watchActiveTab() })
     <FileCmpRuleWin :visible="showCmpRule" @close="showCmpRule = false" @apply="onCmpRulesApplied" />
     <DirCmpView :visible="showDirCmp" @close="showDirCmp = false" />
     <ClipboardHistoryWin :visible="showClipboardHistory" @close="showClipboardHistory = false" />
-    <!-- 🆕 V2.0.0 新组件（浮层） -->
+    <!-- 新组件（浮层） -->
     <RegexTester :visible="showRegexTester" @close="showRegexTester = false" />
     <!-- 脚本管理器弹窗 -->
     <ModalOverlay :visible="showScriptManager" title="脚本管理器" width="85vw" height="80vh" @close="showScriptManager = false">
@@ -1039,7 +1036,7 @@ watch(() => ed.activeTab?.path, () => { watchActiveTab() })
       <ColorPicker @close="showColorPicker = false" @select="(c: string) => { /* 颜色已复制 */ }" />
     </ModalOverlay>
 
-    <!-- 🆕 最近访问文件/文件夹对话框 -->
+    <!-- 最近访问文件/文件夹对话框 -->
     <ModalOverlay :visible="showRecentDialog" title="最近访问" width="520px" height="420px" @close="showRecentDialog = false">
       <RecentFilesDialog
         :visible="showRecentDialog"

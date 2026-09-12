@@ -1,13 +1,9 @@
 <script lang="ts" setup>
 /**
- * 侧栏容器（资源管理器 / 文件树）v2.1
+ * 侧栏容器（资源管理器 / 文件树）
  *
- * 设计目标（v2.1 收敛）：
- *  - 统一面板头：28px、`--et-bg-sunken` 背景、底边 1px `--et-border`、
- *    标题 13px medium、右侧操作图标 14px（来自 .et-chrome-sbh / .et-icon-btn-sm）。
- *  - 统一空状态：`.et-empty`，未来 6 个面板共用。
- *  - 硬编码色 / text-gray-N 全部 token 化。
- *  - 路径新建输入框复用 token 化样式（不再用 .rename-input 局部样式）。
+ *  - 统一面板头：28px，来自 .et-chrome-sbh / .et-icon-btn-sm。
+ *  - 统一空状态：.et-empty，所有面板共用。
  */
 import { onMounted, onUnmounted, watch, ref } from 'vue'
 import { useFileStore, useEditorStore } from '@/stores'

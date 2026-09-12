@@ -7,7 +7,7 @@ import (
 	"easy-text/backend/tools"
 )
 
-// === 查找替换 API（仿 notepad-- findwin 功能）===
+// === 查找替换 API ===
 //
 // 全部方法现在挂在 *SearchHandler 上（通过 Handler 嵌入提升），
 // 详见 handler_subsystem.go 的拆分骨架。
@@ -36,7 +36,7 @@ func (h *SearchHandler) BatchReplace(dirPath string, options tools.FindOptions) 
 	return h.findService.BatchReplace(ctx, dirPath, options)
 }
 
-// 🆕 V2.0.0 全局搜索替换
+// 全局搜索替换
 
 // SearchInFiles 在指定文件列表中搜索
 func (h *SearchHandler) SearchInFiles(filePaths []string, search string, options tools.FindOptions) ([]tools.FindInFileResult, error) {

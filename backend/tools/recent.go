@@ -21,7 +21,7 @@ type RecentEntryResult struct {
 
 // RecentService 最近访问记录服务
 //
-// 依赖通过 config.Source 接口注入而非直接读全局单例 config.Config（ch11 DIP）。
+// 依赖通过 config.Source 接口注入而非直接读全局单例 config.Config。
 // 生产路径由 Handler.Startup 注入 config.NewSource(config.Config)；
 // 测试路径可注入 NewNoopSource 或自定义 fake。
 type RecentService struct {

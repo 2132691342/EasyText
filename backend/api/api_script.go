@@ -4,7 +4,7 @@ import (
 	"easy-text/backend/tools"
 )
 
-// === 脚本扩展 API（🆕 V2.0.0 第四阶段） ===
+// === 脚本 API ===
 //
 // scriptService 不依赖 DB，在 Startup 阶段始终构造，恒非 nil。
 

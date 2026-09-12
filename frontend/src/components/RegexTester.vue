@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 /**
- * 正则表达式测试器 v2.1 — ModalOverlay 统一
+ * 正则表达式测试器 — ModalOverlay 统一
  *
  * 注意：保留 closeOnEsc=true（默认）。此 dialog 打开时用户常常在 textarea
  * 中用 Esc 关闭 IME，但 Esc 同时会触发 ModalOverlay 关闭。这是合理设计，

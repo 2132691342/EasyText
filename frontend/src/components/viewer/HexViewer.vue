@@ -2,15 +2,10 @@
 /**
  * 十六进制查看器
  *
- * 本轮修复的四个问题：
- *  1. 性能：此前用 ReadFileBytes 一次性把整个文件读进内存，再跨 Wails 桥
- *     序列化成 number[]。100MB 文件会膨胀成上亿个 JSON 数字字面量，必卡死。
- *     改为按页调用 ReadFileChunk（ReadAt 随机访问），内存占用恒定为一页。
- *  2. 切换标签不重载：原实现只在 onMounted 加载一次，切到另一个 hex 标签
- *     仍显示上一个文件的内容。
- *  3. 菜单/工具栏的十六进制翻页命令（pre/next/goto-hex-page）无人接听，
- *     点击无效。现监听 editor-command 接线。
- *  4. 原生 window.prompt 在 WebView2 中不可靠，转到页改用 Element Plus 弹窗。
+ *  - 按页调用 ReadFileChunk（ReadAt 随机访问），内存占用恒定为一页
+ *  - 切换标签时重新加载当前文件
+ *  - 翻页命令（pre/next/goto-hex-page）经 editor-command 接线
+ *  - 转到页使用 Element Plus 弹窗（WebView2 下 window.prompt 不可靠）
  */
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import type { EditorTab } from '@/types'

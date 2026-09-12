@@ -333,7 +333,7 @@ func (jt *JSONTool) UnescapeString(s string) (string, error) {
 	return result, err
 }
 
-// 🆕 V2.0.0 JSON 工具扩展
+// JSON 工具扩展
 
 // QueryPath 执行 JSONPath 查询
 func (jt *JSONTool) QueryPath(content string, path string) ([]JSONPathResult, error) {

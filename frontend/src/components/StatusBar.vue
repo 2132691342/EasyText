@@ -1,12 +1,11 @@
 <script lang="ts" setup>
 /**
- * Status Bar v2.1
+ * Status Bar
  *
- * 设计目标（对标 Notepad-- / Sublime Text）：
- *  - 高度 24px，文字 11px，分隔条 12px 高。
- *  - **新增修改指示**：左下"● 已修改"/"○ 已保存"，与 TabBar 圆点对齐。
- *  - 路径省略：超 60 字符中部 …，hover tooltip 完整路径。
- *  - 右键菜单改为"显示项勾选"原生体验。
+ *  - 高度 24px，文字 11px。
+ *  - 左下"● 已修改"/"○ 已保存"修改指示，与 TabBar 圆点对齐。
+ *  - 路径超 60 字符中部省略，hover tooltip 完整路径。
+ *  - 右键菜单为"显示项勾选"。
  */
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useEditorStore, useSettingStore } from '@/stores'

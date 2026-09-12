@@ -14,7 +14,7 @@ const tab = ref<'find' | 'replace' | 'files' | 'global' | 'mark'>('find')
 
 watch(() => props.mode, (m) => { if (m) tab.value = m }, { immediate: true })
 
-// 🆕 V2.0.0 全局搜索
+// 全局搜索
 const showGlobalSearch = ref(false)
 
 // ==================== 查找 Tab ====================
@@ -143,8 +143,7 @@ function doFind() {
 
 /**
  * 移动匹配游标。
- * 「循环查找」此前声明了复选框却从未参与计算（恒为回绕），这里按开关生效：
- * 关闭时走到边界即停并给出提示，与 notepad-- 的行为一致。
+ * 「循环查找」开关生效：开启时回绕，关闭时走到边界即停并给出提示。
  */
 function step(delta: number) {
   const n = fResults.value.length
@@ -196,7 +195,7 @@ function findAllOpen() {
       if (m.index === r.lastIndex) r.lastIndex++
     }
   }
-  // 结果写入底部「查找结果」面板，可点击跳转；此前只显示一个总数，用户看不到命中在哪
+  // 结果写入底部「查找结果」面板，可点击跳转
   sendFindResults(`所有打开文档: "${fText.value}"`, undefined, undefined, all)
   fStatus.value = `所有打开文档共 ${all.length} 处匹配`
 }
@@ -313,7 +312,7 @@ async function dirReplace() {
   dLoading.value = false
 }
 
-// ==================== 🆕 V2.0.0 全局搜索 ====================
+// ==================== 全局搜索 ====================
 const gDir = ref('')
 const gText = ref('')
 const gReplace = ref('')
@@ -473,7 +472,7 @@ watch(() => props.visible, async (v) => {
   >
     <div class="find-win" @keydown="onKey">
 
-        <!-- Tab 栏 (notepad-- 风格) -->
+        <!-- Tab 栏 -->
         <div class="find-win-tabs">
           <button v-for="t in [{k:'find',l:'查找'},{k:'replace',l:'替换'},{k:'files',l:'目录查找'},{k:'global',l:'全局搜索'},{k:'mark',l:'标记'}]" :key="t.k"
             class="find-tab" :class="{ active: tab === t.k }" @click="tab = t.k as any">{{ t.l }}</button>
@@ -595,7 +594,7 @@ watch(() => props.visible, async (v) => {
             </div>
           </div>
 
-          <!-- ====== 🆕 V2.0.0 全局搜索 ====== -->
+          <!-- ====== 全局搜索 ====== -->
           <div v-if="tab==='global'" class="find-form-row">
             <div class="flex-1">
               <div class="find-row">
@@ -667,8 +666,6 @@ watch(() => props.visible, async (v) => {
 </template>
 
 <style scoped>
-/* 全部改用设计令牌：此前整块硬编码 #fff/#ddd/#333 并用 html.dark 覆盖，
-   与其余界面的语义变量脱节，切换主题时弹窗风格明显不一致。 */
 .find-win-overlay {
   position: fixed; inset: 0; z-index: 9999; display: flex; align-items: flex-start; justify-content: center;
   padding-top: 80px; background: rgba(0, 0, 0, .25);
@@ -685,7 +682,7 @@ watch(() => props.visible, async (v) => {
   padding: 6px 10px; background: var(--et-bg-sunken);
   border-bottom: 1px solid var(--et-border); border-radius: var(--et-radius) var(--et-radius) 0 0;
   color: var(--et-fg); user-select: none;
-  /* Wails 拖拽：标题栏按住可拖动窗口（notepad-- 同款交互） */
+  /* Wails 拖拽：标题栏按住可拖动窗口 */
   --wails-draggable: drag;
 }
 .find-win-titlebar .find-win-close { --wails-draggable: no-drag; }

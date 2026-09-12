@@ -85,7 +85,7 @@ function buildStreamLanguage(
   }), [])
 }
 
-// Stream language definitions matching notepad-- lexer set
+// Stream language definitions（基于关键词表构建的流式语言）
 const streamLangs: Record<string, () => LanguageSupport> = {
   rust: () => buildStreamLanguage('rust',
     'as async await break const continue crate dyn else enum extern false fn for if impl in let loop macro match mod move mut pub ref return self static struct super trait true type unsafe use where while',

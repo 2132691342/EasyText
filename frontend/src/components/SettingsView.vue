@@ -41,13 +41,12 @@ const form = reactive({
   showToolBar: config.value.ui.showToolBar,
   showFileListView: config.value.ui.showFileListView,
   zoomLevel: config.value.ui.zoomLevel,
-  // 🆕 V2.0.0
   autoTheme: config.value.theme.autoTheme ?? false,
   autoSaveMode: settingStore.autoSaveMode || 'interval',
   ignorePatterns: (config.value.file.ignorePatterns || ['.git', '~$*', '*.tmp', 'node_modules']).join(', '),
-  // 🆕 关闭行为：默认开托盘驻留
+  // 关闭行为：默认开托盘驻留
   closeToTray: config.value.ui.closeToTray ?? true,
-  // 🆕 最近文件滚动保留条数（默认 10）
+  // 最近文件滚动保留条数（默认 10）
   recentFilesLimit: config.value.ui.recentFilesLimit || 10,
 })
 
@@ -136,7 +135,7 @@ function deleteMacroById(macroId: string) {
   ElMessage.success('宏已删除')
 }
 
-// 🆕 V2.0.0 代码片段管理
+// 代码片段管理
 async function importSnippets() {
   try {
     const path = await OpenFileDialog()
@@ -178,7 +177,7 @@ async function deleteSnippetItem(id: number) {
 
 async function saveSettings() {
   const newConfig = {
-    version: 3, // 🆕 V2.0.0: v3 schema
+    version: 3, // v3 schema
     editor: {
       fontSize: form.fontSize, fontFamily: form.fontFamily,
       tabSize: form.tabSize, insertSpaces: form.insertSpaces,
@@ -197,12 +196,12 @@ async function saveSettings() {
     theme: {
       currentTheme: form.currentTheme as ThemeName, fontSize: form.fontSize,
       fontFamily: form.fontFamily, tabSize: form.tabSize,
-      autoTheme: form.autoTheme, // 🆕 V2.0.0
+      autoTheme: form.autoTheme,
     },
     file: {
       defaultEncoding: form.defaultEncoding, autoDetectEncoding: form.autoDetectEncoding,
       defaultLineEnding: form.defaultLineEnding,
-      ignorePatterns: form.ignorePatterns.split(',').map((s: string) => s.trim()).filter(Boolean), // 🆕 V2.0.0
+      ignorePatterns: form.ignorePatterns.split(',').map((s: string) => s.trim()).filter(Boolean),
     },
     ui: {
       language: form.language, showFileTree: form.showFileTree,
@@ -210,11 +209,11 @@ async function saveSettings() {
       showFileListView: form.showFileListView, showWebAddr: config.value.ui.showWebAddr,
       fileTreeWidth: config.value.ui.fileTreeWidth, zoomLevel: form.zoomLevel,
       toolbarIconSize: config.value.ui.toolbarIconSize, favorites: config.value.ui.favorites || [],
-      statusBarItems: config.value.ui.statusBarItems || {}, // 🆕 V2.0.0
-      toolbarItems: config.value.ui.toolbarItems || {}, // 🆕 V2.0.0
-      recentFilesLimit: form.recentFilesLimit, // 🆕 用户可调，默认 10
-      lastFolder: config.value.ui.lastFolder || '', // 🆕 V2.0.0
-      closeToTray: form.closeToTray, // 🆕 关闭时最小化到托盘
+      statusBarItems: config.value.ui.statusBarItems || {},
+      toolbarItems: config.value.ui.toolbarItems || {},
+      recentFilesLimit: form.recentFilesLimit, // 用户可调，默认 10
+      lastFolder: config.value.ui.lastFolder || '',
+      closeToTray: form.closeToTray, // 关闭时最小化到托盘
       restoreSession: form.restoreFilesOnClose, // 关闭/启动时是否恢复上次的文件
     },
     // 必须带上用户自定义快捷键：否则这里构造的 newConfig 会把已保存的键位覆盖成空
@@ -224,7 +223,7 @@ async function saveSettings() {
     await UpdateConfig(newConfig as unknown as import('../../wailsjs/go/models').config.AppConfig)
     settingStore.setConfig(newConfig)
     settingStore.applyTheme()
-    // 🆕 V2.0.0 保存自动保存模式
+    // 保存自动保存模式
     settingStore.setAutoSaveMode(form.autoSaveMode as 'interval' | 'blur' | 'both')
     // 自动跟随系统主题此前只写配置、没启停监听器，本次会话内切换系统主题无效
     settingStore.setAutoTheme(form.autoTheme)
@@ -292,7 +291,7 @@ watch(() => props.visible, (v) => {
       language: config.value.ui.language, showFileTree: config.value.ui.showFileTree,
       showStatusBar: config.value.ui.showStatusBar, showToolBar: config.value.ui.showToolBar,
       showFileListView: config.value.ui.showFileListView, zoomLevel: config.value.ui.zoomLevel,
-      // 🆕 V2.0.0
+
       autoTheme: config.value.theme.autoTheme ?? false,
       autoSaveMode: settingStore.autoSaveMode,
       ignorePatterns: (config.value.file.ignorePatterns || ['.git', '~$*', '*.tmp', 'node_modules']).join(', '),
@@ -344,7 +343,7 @@ watch(() => props.visible, (v) => {
             <div v-if="form.autoSave" class="flex items-center gap-2 mt-2">
               <label class="text-xs text-gray-600 dark:text-gray-300">间隔(秒):</label>
               <el-input-number v-model="form.autoSaveInterval" :min="10" :max="600" :step="10" size="small"/>
-              <!-- 🆕 V2.0.0 自动保存模式 -->
+              <!-- 自动保存模式 -->
               <label class="text-xs text-gray-600 dark:text-gray-300 ml-4">触发方式:</label>
               <select v-model="form.autoSaveMode" class="px-2 py-1 text-xs border border-gray-300 dark:border-gray-500 rounded bg-white dark:bg-[#1e1e1e] dark:text-gray-200">
                 <option value="interval">定时</option>
@@ -357,12 +356,12 @@ watch(() => props.visible, (v) => {
         <!-- 主题 -->
         <div v-show="activePage==='theme'" class="space-y-3">
           <el-form label-position="top" size="small">
-            <el-form-item label="主题 (共19套，匹配 notepad-- styleset)">
+            <el-form-item label="主题（共 19 套）">
               <el-select v-model="form.currentTheme" style="width:100%">
                 <el-option v-for="t in themeOptions" :key="t.value" :label="t.label" :value="t.value"/>
               </el-select>
             </el-form-item>
-            <!-- 🆕 V2.0.0 自动主题切换 -->
+            <!-- 自动主题切换 -->
             <el-form-item>
               <el-switch v-model="form.autoTheme" active-text="自动跟随系统主题" size="small"/>
               <div class="text-xs text-gray-400 mt-1">启用后，编辑器将根据 Windows 系统深浅色模式自动切换主题</div>
@@ -380,7 +379,7 @@ watch(() => props.visible, (v) => {
             <el-form-item label="默认编码"><el-select v-model="form.defaultEncoding" style="width:100%"><el-option v-for="enc in encodingOptions" :key="enc" :label="enc" :value="enc"/></el-select></el-form-item>
             <el-form-item><el-switch v-model="form.autoDetectEncoding" active-text="自动检测编码"/></el-form-item>
             <el-form-item label="默认换行符"><el-select v-model="form.defaultLineEnding" style="width:100%"><el-option v-for="le in lineEndingOptions" :key="le.value" :label="le.label" :value="le.value"/></el-select></el-form-item>
-            <!-- 🆕 V2.0.0 忽略文件模式 -->
+            <!-- 忽略文件模式 -->
             <el-form-item label="文件树忽略模式">
               <input v-model="form.ignorePatterns" placeholder=".git, ~$*, *.tmp, node_modules" class="w-full px-2 py-1 text-xs border border-gray-300 dark:border-gray-500 rounded bg-white dark:bg-[#1e1e1e] dark:text-gray-200"/>
               <div class="text-xs text-gray-400 mt-1">用逗号分隔，支持通配符 * 和 ?</div>
@@ -401,19 +400,19 @@ watch(() => props.visible, (v) => {
                 <el-switch v-model="form.showFileListView" active-text="显示文件列表视图"/>
               </div>
             </el-form-item>
-            <!-- 🆕 关闭行为：默认开托盘驻留，避免误关 -->
+            <!-- 关闭行为：默认开托盘驻留，避免误关 -->
             <el-form-item>
               <el-switch v-model="form.closeToTray" active-text="关闭时最小化到托盘（防止误操作）"/>
               <div class="text-xs text-gray-400 mt-1">
                 开启后点击关闭按钮会把窗口隐藏到任务栏托盘；关闭时直接退出进程。可在托盘菜单点击「显示主窗口」或「退出」。
               </div>
             </el-form-item>
-            <!-- 🆕 最近文件保留条数 -->
+            <!-- 最近文件保留条数 -->
             <el-form-item label="最近文件保留条数">
               <el-input-number v-model="form.recentFilesLimit" :min="3" :max="50" :step="1" controls-position="right" size="small"/>
               <div class="text-xs text-gray-400 mt-1">文件菜单「最近打开的文件」与最近文件对话框共用此上限，默认 10 条</div>
             </el-form-item>
-            <!-- 🆕 便携模式文件关联（不需要管理员权限） -->
+            <!-- 便携模式文件关联（不需要管理员权限） -->
             <el-form-item label="系统集成">
               <div class="flex items-center gap-2">
                 <span class="text-xs" :class="fileAssocRegistered ? 'text-green-600 dark:text-green-400' : 'text-gray-500'">
@@ -473,7 +472,7 @@ watch(() => props.visible, (v) => {
           </div>
         </div>
 
-        <!-- 🆕 V2.0.0 代码片段管理 -->
+        <!-- 代码片段管理 -->
         <div v-show="activePage==='snippets'" class="space-y-2">
           <div class="flex items-center justify-between mb-2">
             <span class="text-xs text-gray-500">管理代码片段，支持导入/导出 JSON 格式 (兼容 VS Code)</span>
@@ -506,7 +505,7 @@ watch(() => props.visible, (v) => {
 </template>
 
 <style scoped>
-/* v2.1：Settings 主体 token 化 */
+/* Settings 主体 token 化 */
 .settings {
   display: flex;
 }
@@ -569,7 +568,7 @@ watch(() => props.visible, (v) => {
 </style>
 
 <style>
-/* v2.1：兼容 Element Plus 内部 scoped（保留 ::deep 习惯，避免样式塌陷） */
+/* 兼容 Element Plus 内部 scoped（保留 ::deep 习惯，避免样式塌陷） */
 .el-form-item { margin-bottom: 12px; }
 .el-form-item__label { font-size: 13px; padding-bottom: 4px; }
 </style>

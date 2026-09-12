@@ -1,20 +1,7 @@
-// Package fileassoc 提供 Windows 文件关联运行时注册。
+// Package fileassoc 提供 Windows 文件关联的运行时注册（HKCU，无需管理员权限）。
 //
-// 设计动机：
-//   - 便携模式（无 NSIS 安装）：用户从 GitHub 下载 easy-text.exe 后，
-//     双击 .log / .txt 不会被 EasyText 接管。让 EasyText 出现在「打开方式」菜单
-//     至少能解决"右键 → 打开方式 → EasyText"的链路。
-//   - 设置页提供"注册 / 取消"开关，用户主动控制，不静默抢默认。
-//
-// 写入位置（HKCU，不需要管理员权限）：
-//
-//	HKCU\Software\Classes\.<EXT>\OpenWithProgids\EasyText.text   = ""
-//	HKCU\Software\Classes\EasyText.text                          = "EasyText 文本文件"
-//	HKCU\Software\Classes\EasyText.text\DefaultIcon              = "<exe>",0
-//	HKCU\Software\Classes\EasyText.text\shell\open\command       = '"<exe>" "%1"'
-//
-// 只动 OpenWithProgids 与 ProgID 定义本身，**绝不修改** HKCU\Software\Classes\.<EXT>
-// 的默认指向，保留用户既有的默认编辑器选择。
+// 只写 OpenWithProgids 与 ProgID 定义本身，不修改扩展名的默认指向，
+// 不抢占用户既有默认编辑器；设置页提供"注册/取消"开关。
 package fileassoc
 
 import (

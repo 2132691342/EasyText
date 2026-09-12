@@ -1,15 +1,11 @@
 <script lang="ts" setup>
 /**
- * 菜单栏（Menu Bar）v2.1
+ * 菜单栏（Menu Bar）
  *
- * 设计目标（对标 Notepad-- / Sublime Text）：
- *  1. 顶部菜单条 28px，菜单按钮 padding: 0 10px，hover 高亮过渡。
- *  2. Lucide 图标替代 emoji 风格的 ✓/▶（Check / ChevronRight）。
- *  3. 键盘可达：菜单按钮 tabindex=0，↑/↓ 在项间移动，Enter 触发，
- *     Esc 关闭，右箭头进入子菜单。
- *  4. 状态从 store 实时取（toolbar 改 → 菜单勾选同步）。
- *  5. 子菜单位置自适应右边界。
- *  6. 过渡动画 80ms。
+ *  - 顶部菜单条 28px，hover 高亮，80ms 过渡。
+ *  - 键盘可达：↑/↓ 在项间移动，Enter 触发，Esc 关闭，右箭头进入子菜单。
+ *  - 状态从 store 实时取（toolbar 改 → 菜单勾选同步）。
+ *  - 子菜单位置自适应右边界，超长列表内部滚动。
  */
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
@@ -489,7 +485,7 @@ const openItems = computed(() => {
 <style scoped>
 /* 顶层菜单项 wrapper：必须 position:relative，
    否则 .mb-menu 的 absolute(top:100%) 会相对视口定位，
-   下拉面板渲染到屏幕外——表现为"点击菜单毫无反应"（M5 用户实测） */
+   下拉面板渲染到屏幕外——表现为"点击菜单毫无反应" */
 .mb-top-item {
   position: relative;
   height: 100%;

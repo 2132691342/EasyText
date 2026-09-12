@@ -11,7 +11,7 @@ import (
 	"easy-text/backend/utils"
 )
 
-// MacroStep 表示宏录制的一个步骤（仿 notepad-- 宏系统）
+// MacroStep 表示宏录制的一个步骤
 type MacroStep struct {
 	Type      string `json:"type"` // insert, delete, replace, selection, cursor, command, find
 	Text      string `json:"text,omitempty"`

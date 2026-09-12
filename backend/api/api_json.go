@@ -29,7 +29,7 @@ func (h *Handler) ExtractJSONKeys(content string) ([]string, error) {
 	return h.jsonTool.ExtractKeys(content)
 }
 
-// 🆕 V2.0.0 JSON 工具扩展
+// JSON 工具扩展
 
 // JsonPathQuery 执行 JSONPath 查询
 func (h *Handler) JsonPathQuery(jsonStr string, path string) ([]tools.JSONPathResult, error) {

@@ -2,7 +2,7 @@ package api
 
 import "easy-text/backend/tools"
 
-// === 正则测试 API（🆕 V2.0.0） ===
+// === 正则测试 API ===
 
 // regexTool 正则测试工具实例（延迟初始化）
 var regexTool *tools.RegexTool

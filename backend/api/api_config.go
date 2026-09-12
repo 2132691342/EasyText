@@ -31,7 +31,7 @@ func (h *Handler) SetCloseToTray(enabled bool) error {
 }
 
 // ForceQuit 把 closepolicy 的 force 标志置 true，下一次 OnBeforeClose 直接放行。
-// v2.1 修 bug #5：前端 useCommands.exit 在 Quit() 前先调本方法，绕过
+// 前端 useCommands.exit 在 Quit() 前先调本方法，绕过
 // "关闭到托盘"分支。
 func (h *Handler) ForceQuit() {
 	closepolicy.SetForce(true)

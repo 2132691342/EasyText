@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 /**
- * MD5 / SHA 哈希计算 v2.1
+ * MD5 / SHA 哈希计算
  *  - 用 ModalOverlay 替代手撸 Teleport
  *  - 所有 raw color 改为 token
  */

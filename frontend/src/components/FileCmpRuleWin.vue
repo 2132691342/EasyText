@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 /**
- * 文件对比规则 v2.1 — ModalOverlay 统一
+ * 文件对比规则 — ModalOverlay 统一
  */
 import { ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'

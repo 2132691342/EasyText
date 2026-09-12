@@ -110,7 +110,7 @@ var (
 	ErrTerminalLaunchFailed = &AppError{Code: 7001, Message: "打开命令行失败"}
 )
 
-// Draft/Bookmark errors (8000-8999) 🆕 V2.0.0
+// Draft/Bookmark errors (8000-8999)
 var (
 	ErrDraftSaveFailed    = &AppError{Code: 8001, Message: "草稿保存失败"}
 	ErrDraftLoadFailed    = &AppError{Code: 8002, Message: "草稿加载失败"}
@@ -120,7 +120,7 @@ var (
 	ErrBookmarkLoadFailed = &AppError{Code: 8006, Message: "书签加载失败"}
 )
 
-// Remote/Script/Git errors (9000-9999) 🆕 V2.0.0
+// Remote/Script/Git errors (9000-9999)
 var (
 	ErrRemoteConnectFailed = &AppError{Code: 9001, Message: "远程连接失败"}
 	ErrRemoteAuthFailed    = &AppError{Code: 9002, Message: "远程认证失败"}

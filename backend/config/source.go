@@ -1,20 +1,7 @@
-// Package config 提供应用配置 + 文件持久化 + 单例 ConfigManager。
-//
-// 本文件（source.go）抽 Source 接口，目的是让业务服务（如 RecentService）
-// 通过接口拿配置而**不直接依赖全局单例**。这是 ch11 §DIP（依赖倒置）：
-//   - 业务代码持有 Source 接口引用
-//   - 生产实现 Source 适配 *ConfigManager
-//   - 单元测试可注入 stub/fake 验证业务逻辑而无需读写真实 JSON
 package config
 
-// Source 提供只读视图的 AppConfig 给业务服务。
-//
-// 设计动机：业务代码（RecentService / BookmarkService / SnippetService ...）
-// 都在构造期需要 cfg.UI.RecentFilesLimit 等少量字段。原版都直接调
-// config.Config.Get()——这是 ch11 §DIP 反模式：测试时无法 stub。
-//
-// 把 Source 接口单独抽出，限制业务方只能 Get()（不能 Update()），
-// 减少业务代码对 ConfigManager 内部的隐式依赖。
+// Source 提供只读的 AppConfig 视图。业务服务依赖该接口而非全局
+// ConfigManager：生产注入适配器，测试可注入 stub。
 type Source interface {
 	Get() AppConfig
 }

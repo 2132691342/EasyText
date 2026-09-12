@@ -42,11 +42,7 @@ func (h *Handler) ShowConfirmDialog(title, message string) (bool, error) {
 
 // === System Info ===
 
-// GetAppVersion 获取应用版本
-//
-// v2.1 修 bug #4：原实现硬编码 "1.0.0"，与 wails.json 的 info.productVersion (2.0.0)
-// 不一致；前端"关于"对话框因此显示陈旧版本。现由 NewHandler 在启动时
-// 从 wails.json 读取 productVersion 并注入 h.appVersion。
+// GetAppVersion 获取应用版本（取自 wails.json 的 info.productVersion）。
 func (h *Handler) GetAppVersion() string {
 	if h.appVersion == "" {
 		return "0.0.0"

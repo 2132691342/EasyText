@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 /**
- * 列块编辑 v2.1
+ * 列块编辑
  *  - 用 ModalOverlay 替代手撸 Teleport
  *  - 按钮 token 化
  */

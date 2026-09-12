@@ -40,23 +40,22 @@ type EditorConfig struct {
 	AutoSave         bool   `json:"autoSave"`
 	AutoSaveInterval int    `json:"autoSaveInterval"` // seconds
 	// AutoSaveMode 自动保存触发方式：interval（定时）/ blur（失焦）/ both（两者）。
-	// 此前该值只存在于前端内存，重启后回落到 interval，导致「失焦自动保存」形同未实现。
 	AutoSaveMode     string `json:"autoSaveMode"`
 	HighlightLine    bool   `json:"highlightLine"`
 	BracketPairColor bool   `json:"bracketPairColor"`
 	Minimap          bool   `json:"minimap"`
-	// 视图显示开关（对齐 notepad-- 视图菜单）
+	// 视图显示开关
 	ShowIndentGuide bool `json:"showIndentGuide"`
 	ShowWhitespace  bool `json:"showWhitespace"`
 	ShowEol         bool `json:"showEol"`
 	FoldEnable      bool `json:"foldEnable"`
 	// 列块模式开关
 	ColumnMode bool `json:"columnMode"`
-	// 🆕 V2.0.0 列块编辑配置
+	// 列块编辑配置
 	ColumnModeConfig ColumnModeConfig `json:"columnModeConfig"`
 }
 
-// ColumnModeConfig 列块编辑配置（🆕 V2.0.0）
+// ColumnModeConfig 列块编辑配置
 type ColumnModeConfig struct {
 	NumberStart    int    `json:"numberStart"`    // 数字序列起始值
 	NumberStep     int    `json:"numberStep"`     // 数字序列步长
@@ -68,7 +67,7 @@ type ColumnModeConfig struct {
 // ThemeConfig represents theme settings
 type ThemeConfig struct {
 	CurrentTheme string `json:"currentTheme"`
-	AutoTheme    bool   `json:"autoTheme"` // 🆕 V2.0.0 自动跟随系统主题
+	AutoTheme    bool   `json:"autoTheme"` // 自动跟随系统主题
 }
 
 // FileConfig represents file settings
@@ -76,7 +75,7 @@ type FileConfig struct {
 	DefaultEncoding    string   `json:"defaultEncoding"`
 	AutoDetectEncoding bool     `json:"autoDetectEncoding"`
 	DefaultLineEnding  string   `json:"defaultLineEnding"`
-	IgnorePatterns     []string `json:"ignorePatterns"` // 🆕 V2.0.0 文件过滤规则
+	IgnorePatterns     []string `json:"ignorePatterns"` // 文件过滤规则
 }
 
 // UIConfig represents UI settings
@@ -91,11 +90,11 @@ type UIConfig struct {
 	ZoomLevel        int             `json:"zoomLevel"`
 	ToolbarIconSize  int             `json:"toolbarIconSize"`  // 24 | 36 | 48
 	Favorites        []string        `json:"favorites"`        // 收藏夹文件路径列表
-	StatusBarItems   map[string]bool `json:"statusBarItems"`   // 🆕 V2.0.0 状态栏显示项
-	ToolbarItems     map[string]bool `json:"toolbarItems"`     // 🆕 V2.0.0 工具栏显示项
-	RecentFilesLimit int             `json:"recentFilesLimit"` // 🆕 V2.0.0 最近文件数限制
-	LastFolder       string          `json:"lastFolder"`       // 🆕 V2.0.0 上次打开的项目目录
-	// 🆕 关闭行为：true 时关闭按钮最小化到托盘；false 时直接退出
+	StatusBarItems   map[string]bool `json:"statusBarItems"`   // 状态栏显示项
+	ToolbarItems     map[string]bool `json:"toolbarItems"`     // 工具栏显示项
+	RecentFilesLimit int             `json:"recentFilesLimit"` // 最近文件数限制
+	LastFolder       string          `json:"lastFolder"`       // 上次打开的项目目录
+	// 关闭行为：true 时关闭按钮最小化到托盘；false 时直接退出
 	CloseToTray bool `json:"closeToTray"`
 	// 启动时是否恢复上次会话打开的文件。
 	// 用指针是为了区分「用户显式关闭」与「旧配置文件缺少该字段」：

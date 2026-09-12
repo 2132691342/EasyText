@@ -1,15 +1,12 @@
 <script lang="ts" setup>
 /**
- * 工具栏（Toolbar）v2.1
+ * 工具栏（Toolbar）
  *
- * 设计目标（对标 Notepad-- / Sublime Text 的紧凑工具条）：
- *  1. 数据驱动：命令在一处声明，渲染/折叠/「更多」菜单共用同一份数据。
- *  2. 固定高度：Chrome 总高 30px，按钮 26×26px；不再随 iconSize 撑爆 chrome，
- *     修复了之前 38/42px 把菜单挤掉的不平衡问题。iconSize 仅影响图标像素。
- *  3. 即时 Popover：hover 200ms 后弹出 label + shortcut，替代 native title
- *     的 500ms+ 延迟，提升快捷键可发现性。
- *  4. 溢出折叠：窗口变窄时尾部按钮自动收进「更多」下拉，"更多"按钮带 fade 过渡。
- *  5. 状态可见：开关类按钮的激活态直接绑定到 store/config，不再有脱节。
+ *  - 数据驱动：命令在一处声明，渲染/折叠/「更多」菜单共用同一份数据。
+ *  - 固定高度 30px，按钮 26×26px；iconSize 仅影响图标像素。
+ *  - 即时 Popover：hover 200ms 弹出 label + shortcut，替代 native title 延迟。
+ *  - 溢出折叠：窗口变窄时尾部按钮自动收进「更多」下拉。
+ *  - 开关类按钮激活态直接绑定 store/config。
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useEditorStore, useSettingStore } from '@/stores'

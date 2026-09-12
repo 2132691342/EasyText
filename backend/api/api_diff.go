@@ -27,7 +27,7 @@ func (h *SearchHandler) ApplyDiffPatch(text, patch string) (string, error) {
 	return h.diffTool.ApplyPatch(text, patch)
 }
 
-// 🆕 V2.0.0 CompareCharacters 字符级差异比较，返回 HTML 格式（<ins>/<del> 标记）
+// CompareCharacters 字符级差异比较，返回 HTML 格式（<ins>/<del> 标记）
 func (h *SearchHandler) CompareCharacters(oldStr, newStr string) string {
 	return h.diffTool.CompareCharacters(oldStr, newStr)
 }

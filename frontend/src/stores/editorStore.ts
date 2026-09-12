@@ -9,14 +9,14 @@ export const useEditorStore = defineStore('editor', () => {
   const activeTabId = ref<string | null>(null)
   const config = ref<AppConfig | null>(null)
 
-  // ============ 书签（notepad-- bookmark 系统）============
+  // ============ 书签 ============
   const bookmarksMap = ref<Map<string, Set<number>>>(new Map())
 
-  // ============ 位置历史（notepad-- 跳转历史）============
+  // ============ 位置历史 ============
   const positionHistory = ref<Map<string, { pos: number; scrollTop: number }[]>>(new Map())
   const historyIndex = ref<Map<string, number>>(new Map())
 
-  // ============ 剪贴板历史（notepad-- 剪贴板历史记录）============
+  // ============ 剪贴板历史 ============
   const clipboardHistory = ref<string[]>([])
   function pushClipboard(text: string) {
     if (!text) return
@@ -26,7 +26,7 @@ export const useEditorStore = defineStore('editor', () => {
     clipboardHistory.value = list
   }
 
-  // ============ 宏系统（notepad-- 宏录制/回放）============
+  // ============ 宏系统 ============
   const macroState = ref({
     isRecording: false,
     isPlaying: false,
@@ -304,14 +304,14 @@ export const useEditorStore = defineStore('editor', () => {
     } catch (e) { console.warn(e) }
   }
 
-  // ============ 🆕 V2.0.0 最近访问 ============
+  // ============ 最近访问 ============
   const recentFiles = ref<RecentEntry[]>([])
   const recentFolders = ref<RecentEntry[]>([])
 
-  // ============ 🆕 V2.0.0 代码片段 ============
+  // ============ 代码片段 ============
   const snippets = ref<Snippet[]>([])
 
-  // ============ 🆕 V2.0.0 持久化书签 ============
+  // ============ 持久化书签 ============
   const globalBookmarks = ref<BookmarkEntry[]>([])
 
   // ============ 配置 ============
@@ -342,7 +342,6 @@ export const useEditorStore = defineStore('editor', () => {
     startMacroRecording, stopMacroRecording, recordMacroStep,
     playMacro, getNextMacroStep, stopMacroPlayback,
     deleteMacro, renameMacro, saveMacros, loadMacros,
-    // 🆕 V2.0.0
     recentFiles, recentFolders, snippets, globalBookmarks,
   }
 })

@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 /**
- * 最近文件 / 文件夹 v2.1 — ModalOverlay 统一
+ * 最近文件 / 文件夹 — ModalOverlay 统一
  */
 import { ref, watch, onMounted } from 'vue'
 import { GetRecentFiles, GetRecentFolders, OpenFileDialog, ClearRecentFiles, ClearRecentFolders, AddRecentEntry } from '../../wailsjs/go/main/App'

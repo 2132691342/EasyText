@@ -329,9 +329,8 @@ type ChunkResult struct {
 
 // ReadChunk 按字节区间读取文件，返回数据与文件总大小。
 //
-// 用途：HexViewer 分页浏览二进制/大文件。此前前端用 ReadFileBytes 一次性读入
-// 整个文件并跨 Wails 桥序列化成 []number，100MB 文件会膨胀成上亿个数字字面量，
-// 内存与解析开销都不可接受。改为按页只取所需区间（默认 16KB），复杂度 O(size)。
+// 用途：HexViewer 分页浏览二进制/大文件。按页只取所需区间（默认 16KB），
+// 避免整文件跨 Wails 桥序列化成 number[] 的内存与解析开销。
 //
 // 语义：
 //   - offset < 0 视为 0；offset 超过文件末尾返回空数据（不报错）；
