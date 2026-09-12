@@ -1,31 +1,37 @@
 <script lang="ts" setup>
 /**
- * CodeEditor v3.0（M3 重塑后）
+ * CodeEditor v3.1（M5 回归修复版）
  *
- * 架构：
- *   - 容器（~600 行）：createEditor / dispatch / 模板
- *   - composables/：useEditorTheme / useEditorLanguage / useEditorCompletion /
- *                    useEditorBookmark / useEditorColumnMode / useEditorMacro /
- *                    useEditorMarkdown
- *   - ext/：ext-keymap / ext-context-menu
+ * 架构：容器 + composables/（theme/language/completion/bookmark/columnMode/macro/markdown）
+ *       + ext/（keymap/context-menu）
  *
- * 修复合环 bug：
- *   #1 useEditorBookmark.syncFromDB（tab 切换 / 重命名时拉取后端）
- *   #2 useEditorCompletion.invalidateCompletionCache（监听 snippets 长度变化）
- *
- * 保留原 82 个 dispatch 命令（用于主命令入口 editor-command）。
+ * M5 修复的回归（对照 49b28bc 原版逐函数核对）：
+ *   1. undo/redo 改回 CodeMirror 命令（execCommand 是错误实现）
+ *   2. gotoPrev/NextPosition 改回 goBackPosition/goForwardPosition
+ *   3. minimap viewport 恢复 scrollTop/scrollHeight/clientHeight + scroll rAF 监听
+ *   4. saveEditorState 补 updateScrollPosition
+ *   5. restoreEditorState 补 scrollPosition 恢复
+ *   6. tab 切换恢复 in-place content swap（不再销毁重建，保留 undo 历史）
+ *   7. formatJson/minify/validate 改回 FormatJSON/MinifyJSON/ValidateJSON Wails API
+ *   8. formatXml 恢复原版内置 prettyPrintXml（移除 xml-formatter 依赖）
+ *   9. 补齐丢失的命令分支：comment-line/block、clear-all-marks、toggle-word-wrap、
+ *      toggle-whitespace、toggle-eol、toggle-minimap、spaces-all-to-tabs、
+ *      spaces-leading-to-tabs、column-mode（toggle 语义）
+ *   10. toggleEol 恢复 '¶' content 值；toggleShowAll 同时切 whitespace+eol
  */
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import type { EditorTab, MdViewMode } from '@/types'
+import type { EditorTab, Snippet } from '@/types'
 import { useEditorStore, useSettingStore } from '@/stores'
-import { Compartment, EditorState, Prec, StateEffect, StateField, RangeSetBuilder, RangeSet } from '@codemirror/state'
-import { EditorView, keymap, Decoration, gutter, GutterMarker, lineNumbers, highlightActiveLine, highlightActiveLineGutter, highlightSpecialChars, rectangularSelection, crosshairCursor, dropCursor, drawSelection } from '@codemirror/view'
-import { bracketMatching, indentOnInput } from '@codemirror/language'
-import { autocompletion } from '@codemirror/autocomplete'
-import { history } from '@codemirror/commands'
-import { FormatJSON, Convert, JsonPathQuery, JsonToStruct, JsonStructuredDiff } from '../../wailsjs/go/main/App'
-import xmlFormat from 'xml-formatter'
+import { AddBookmark, RemoveBookmark, FormatJSON, MinifyJSON, ValidateJSON } from '../../../wailsjs/go/main/App'
+import { EditorView, Decoration, lineNumbers, highlightActiveLine, highlightActiveLineGutter, highlightSpecialChars, rectangularSelection, crosshairCursor, dropCursor } from '@codemirror/view'
+import { Compartment, EditorState, Prec, StateEffect, StateField, RangeSetBuilder, RangeSet, type Extension } from '@codemirror/state'
+import { syntaxHighlighting, foldGutter } from '@codemirror/language'
+import { closeBrackets, closeBracketsKeymap, autocompletion, snippetCompletion, completionKeymap } from '@codemirror/autocomplete'
+import { defaultKeymap, history, historyKeymap, indentWithTab, toggleComment, toggleBlockComment, undo, redo } from '@codemirror/commands'
+import { foldKeymap, indentOnInput, bracketMatching } from '@codemirror/language'
+import { lintKeymap } from '@codemirror/lint'
+import { keymap } from '@codemirror/view'
 import Minimap from './Minimap.vue'
 
 import { useEditorTheme } from './composables/useEditorTheme'
@@ -45,30 +51,30 @@ const settingStore = useSettingStore()
 const config = computed(() => settingStore.config)
 const colors = computed(() => settingStore.currentThemeColors as any)
 
-// ==================== 编辑器实例与 composable 装配 ====================
+// ==================== 实例状态 ====================
 const editorContainer = ref<HTMLElement | null>(null)
 const editorView = shallowRef<EditorView | null>(null)
 let isInitializing = false
 
-// —— 各 composable 装配 ——
+// ==================== Composable 装配 ====================
 const theme = useEditorTheme(colors as any, config as any)
 const language = useEditorLanguage()
 const completion = useEditorCompletion(
-  computed(() => props.tab.language),
-  editorStore.snippets as any,
+  computed(() => props.tab.language) as any,
+  computed(() => editorStore.snippets ?? []) as any,
 )
 const bookmark = useEditorBookmark()
 const columnMode = useEditorColumnMode()
 const macro = useEditorMacro()
 const markdown = useEditorMarkdown(
-  computed(() => props.tab.language),
-  computed(() => props.tab.content),
+  computed(() => props.tab.language) as any,
+  computed(() => props.tab.content) as any,
   colors as any,
 )
 const keymapExt = useEditorKeymap()
 const contextMenu = useEditorContextMenu()
 
-// —— 编辑器 compartments ——
+// ==================== Compartments ====================
 const appearanceCompartment = new Compartment()
 const syntaxHighlightCompartment = new Compartment()
 const langCompartment = new Compartment()
@@ -76,15 +82,17 @@ const foldCompartment = new Compartment()
 const wordWrapCompartment = new Compartment()
 const showWhitespaceCompartment = new Compartment()
 const webAddrCompartment = new Compartment()
+const tabSizeCompartment = new Compartment()
 
-// —— 5 色标记（M3 仍保留 in-memory currentMarkColor；store 同步保留给后续扩展）——
+// ==================== 多色 mark（原版逻辑） ====================
 const MARK_COLORS = [
-  'rgba(255,212,0,0.45)', 'rgba(255,120,120,0.45)', 'rgba(120,180,255,0.45)',
-  'rgba(120,220,150,0.45)', 'rgba(200,140,255,0.45)',
+  'rgba(255,212,0,0.45)',   // 黄
+  'rgba(255,120,120,0.45)', // 红
+  'rgba(120,180,255,0.45)', // 蓝
+  'rgba(120,220,150,0.45)', // 绿
+  'rgba(200,140,255,0.45)', // 紫
 ]
 let currentMarkColor = 0
-
-// —— 多色 mark StateField ——
 interface MarkRange { from: number; to: number; color: number }
 const setMarks = StateEffect.define<MarkRange[]>()
 const addMarkRanges = StateEffect.define<MarkRange[]>()
@@ -95,22 +103,22 @@ const markField = StateField.define<RangeSet<Decoration>>({
     let next = marks
     for (const e of tr.effects) {
       if (e.is(setMarks)) {
-        const b = new RangeSetBuilder<Decoration>()
+        const builder = new RangeSetBuilder<Decoration>()
         const sorted = [...e.value].sort((a, b) => a.from - b.from)
         for (const r of sorted) {
-          if (r.from < r.to) b.add(r.from, r.to, Decoration.mark({ attributes: { style: `background-color:${MARK_COLORS[r.color % MARK_COLORS.length]};border-radius:2px;` } }))
+          if (r.from < r.to) builder.add(r.from, r.to, Decoration.mark({ attributes: { style: `background-color:${MARK_COLORS[r.color % MARK_COLORS.length]};border-radius:2px;` } }))
         }
-        next = b.finish()
+        next = builder.finish()
       } else if (e.is(addMarkRanges)) {
         const existing: MarkRange[] = []
         const iter = marks.iter()
         while (iter.value) { existing.push({ from: iter.from, to: iter.to, color: 0 }); iter.next() }
         const merged = [...existing, ...e.value].sort((a, b) => a.from - b.from)
-        const b = new RangeSetBuilder<Decoration>()
+        const builder = new RangeSetBuilder<Decoration>()
         for (const r of merged) {
-          if (r.from < r.to) b.add(r.from, r.to, Decoration.mark({ attributes: { style: `background-color:${MARK_COLORS[r.color % MARK_COLORS.length]};border-radius:2px;` } }))
+          if (r.from < r.to) builder.add(r.from, r.to, Decoration.mark({ attributes: { style: `background-color:${MARK_COLORS[r.color % MARK_COLORS.length]};border-radius:2px;` } }))
         }
-        next = b.finish()
+        next = builder.finish()
       } else if (e.is(clearMarksEffect)) {
         next = RangeSet.empty
       }
@@ -120,7 +128,7 @@ const markField = StateField.define<RangeSet<Decoration>>({
   provide: f => EditorView.decorations.from(f, v => v),
 })
 
-// —— URL highlight（view→显示网页地址） ——
+// ---- URL highlight（视图→显示网页地址） ----
 const webAddrField = StateField.define<RangeSet<Decoration>>({
   create(state) { return buildWebAddrDecorations(state) },
   update(decos, tr) {
@@ -131,30 +139,33 @@ const webAddrField = StateField.define<RangeSet<Decoration>>({
 })
 const URL_RE = /\b(https?|ftp|file):\/\/[^\s<>"']+/gi
 function buildWebAddrDecorations(state: any): RangeSet<Decoration> {
-  const b = new RangeSetBuilder<Decoration>()
+  const builder = new RangeSetBuilder<Decoration>()
   const doc = state.doc.toString()
   for (const m of doc.matchAll(URL_RE)) {
     if (m.index === undefined) continue
-    b.add(m.index, m.index + m[0].length, Decoration.mark({ class: 'cm-webaddr' }))
+    builder.add(m.index, m.index + m[0].length, Decoration.mark({ class: 'cm-webaddr' }))
   }
-  return b.finish()
+  return builder.finish()
 }
 
-// —— 高亮当前词（双击触发） ——
+// ---- 高亮当前词（双击） ----
 const addHighlightWord = StateEffect.define<{ from: number; to: number }>()
 const clearHighlightWord = StateEffect.define()
 const highlightWordField = StateField.define<RangeSet<Decoration>>({
   create() { return RangeSet.empty },
-  update(h, tr) {
+  update(highlights, tr) {
     for (const e of tr.effects) {
       if (e.is(addHighlightWord)) {
-        const b = new RangeSetBuilder<Decoration>()
-        b.add(e.value.from, e.value.to, Decoration.mark({ class: 'cm-word-highlight', attributes: { style: 'background-color:rgba(255,200,0,0.3);border-radius:2px;' } }))
-        return b.finish()
-      } else if (e.is(clearHighlightWord)) return RangeSet.empty
+        const { from, to } = e.value
+        const builder = new RangeSetBuilder<Decoration>()
+        builder.add(from, to, Decoration.mark({ class: 'cm-word-highlight', attributes: { style: 'background-color:rgba(255,200,0,0.3);border-radius:2px;' } }))
+        return builder.finish()
+      } else if (e.is(clearHighlightWord)) {
+        return RangeSet.empty
+      }
     }
     if (tr.docChanged) return RangeSet.empty
-    return h
+    return highlights
   },
   provide: f => EditorView.decorations.from(f, v => v),
 })
@@ -162,14 +173,11 @@ const highlightWordField = StateField.define<RangeSet<Decoration>>({
 // ==================== 工具函数 ====================
 let lastSearchTerm = ''
 function setSearchTerm(term: string) { lastSearchTerm = term }
-
 function escapeRegExp(s: string) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
 
-// —— 光标定位 ——
-function getLineCount() { return editorView.value?.state.doc.lines || 0 }
-function getSelectedText() {
-  const v = editorView.value
-  return v ? v.state.sliceDoc(v.state.selection.main.from, v.state.selection.main.to) : ''
+function getLineCount(): number { return editorView.value?.state.doc.lines || 0 }
+function getSelectedText(): string {
+  return editorView.value ? editorView.value.state.sliceDoc(editorView.value.state.selection.main.from, editorView.value.state.selection.main.to) : ''
 }
 
 function gotoLine(lineNum: number) {
@@ -181,23 +189,32 @@ function gotoLine(lineNum: number) {
   v.focus()
 }
 
-// —— Goto-line 弹窗 ——
+// —— Goto line 弹窗 ——
 const showGotoLine = ref(false)
 const gotoLineInput = ref<number | null>(null)
 function showGotoLineDialog() {
   showGotoLine.value = true
-  setTimeout(() => {
-    const el = document.querySelector('.goto-line-input') as HTMLInputElement | null
-    el?.focus()
-  }, 50)
+  setTimeout(() => { (document.querySelector('.goto-line-input') as HTMLInputElement | null)?.focus() }, 50)
 }
 function handleGotoLine() {
   if (gotoLineInput.value) gotoLine(gotoLineInput.value)
   showGotoLine.value = false
 }
 
-// —— 编辑操作：剪切/复制/粘贴/全选/删除 ——
+// ==================== 编辑操作 ====================
 function cutSelection() {
+  const v = editorView.value
+  if (!v) return
+  const { from, to } = v.state.selection.main
+  if (from === to) return
+  const text = v.state.sliceDoc(from, to)
+  // 先写应用内剪贴板（可靠），再尽力写系统剪贴板（WebView2 可能拒权限）
+  editorStore.pushClipboard(text)
+  navigator.clipboard?.writeText(text).catch(() => {})
+  v.dispatch({ changes: { from, to } })
+  v.focus()
+}
+function copySelection() {
   const v = editorView.value
   if (!v) return
   const { from, to } = v.state.selection.main
@@ -205,15 +222,6 @@ function cutSelection() {
   const text = v.state.sliceDoc(from, to)
   editorStore.pushClipboard(text)
   navigator.clipboard?.writeText(text).catch(() => {})
-  v.dispatch({ changes: { from, to } })
-}
-function copySelection() {
-  const v = editorView.value
-  if (!v) return
-  const { from, to } = v.state.selection.main
-  if (from === to) return
-  editorStore.pushClipboard(v.state.sliceDoc(from, to))
-  navigator.clipboard?.writeText(v.state.sliceDoc(from, to)).catch(() => {})
 }
 async function pasteAtCursor() {
   const v = editorView.value
@@ -222,26 +230,58 @@ async function pasteAtCursor() {
   if (!clip) {
     try { clip = await navigator.clipboard.readText() } catch { clip = '' }
   }
-  if (clip) v.dispatch({ changes: { from: v.state.selection.main.head, insert: clip } })
+  if (clip) { v.dispatch({ changes: { from: v.state.selection.main.head, insert: clip } }); v.focus() }
 }
 function selectAll() {
   const v = editorView.value
   if (!v) return
   v.dispatch({ selection: { anchor: 0, head: v.state.doc.length } })
+  v.focus()
+}
+function undoAction() {
+  if (!editorView.value) return
+  undo(editorView.value)
+}
+function redoAction() {
+  if (!editorView.value) return
+  redo(editorView.value)
+}
+function toggleCommentAction() {
+  if (!editorView.value) return
+  toggleComment(editorView.value)
 }
 function deleteSelectionOrChar() {
   const v = editorView.value
   if (!v) return
-  if (v.state.selection.main.from !== v.state.selection.main.to) {
-    v.dispatch({ changes: { from: v.state.selection.main.from, to: v.state.selection.main.to } })
-  } else if (v.state.selection.main.head > 0) {
-    v.dispatch({ changes: { from: v.state.selection.main.head - 1, to: v.state.selection.main.head } })
-  }
+  const { from, to } = v.state.selection.main
+  const end = from !== to ? to : Math.min(v.state.doc.length, from + 1)
+  if (from === end) return
+  v.dispatch({ changes: { from, to: end } })
+  v.focus()
 }
-function undoAction() { editorView.value?.dom.querySelector<HTMLElement>('.cm-content')?.blur(); document.execCommand?.('undo'); }
-function redoAction() { document.execCommand?.('redo'); }
+/** 剪切当前行：整行进剪贴板并连行尾换行删除（原版实现） */
+function cutCurrentLine() {
+  const v = editorView.value
+  if (!v) return
+  const state = v.state
+  const line = state.doc.lineAt(state.selection.main.head)
+  const text = line.text
+  navigator.clipboard?.writeText(text).catch(() => {})
+  editorStore.pushClipboard(text)
+  const from = line.number > 1 ? line.from - 1 : line.from
+  const to = line.to < state.doc.length ? line.to + 1 : line.to
+  v.dispatch({ changes: { from, to: Math.min(to, state.doc.length) } })
+  v.focus()
+}
 
-// —— 通用行操作 ——
+function doEditorAction(action: 'cut' | 'copy' | 'paste' | 'selectAll') {
+  if (action === 'selectAll') selectAll()
+  else if (action === 'cut') cutSelection()
+  else if (action === 'copy') copySelection()
+  else if (action === 'paste') pasteAtCursor()
+}
+
+// ==================== 行操作 / 排版（原版逐字搬运） ====================
 function lineOperation(op: string) {
   const v = editorView.value
   if (!v) return
@@ -253,58 +293,75 @@ function lineOperation(op: string) {
   switch (op) {
     case 'duplicate': {
       const text = state.sliceDoc(fromLine.from, toLine.to)
-      v.dispatch({ changes: { from: toLine.to, insert: '\n' + text } }); break
+      v.dispatch({ changes: { from: toLine.to, insert: '\n' + text } })
+      break
     }
     case 'remove': {
       const end = toLine.to + 1 > state.doc.length ? state.doc.length : toLine.to + 1
-      v.dispatch({ changes: { from: fromLine.from, to: end } }); break
+      v.dispatch({ changes: { from: fromLine.from, to: end } })
+      break
     }
     case 'moveUp': {
       if (fromLine.number <= 1) return
-      const prev = state.doc.line(fromLine.number - 1)
+      const prevLine = state.doc.line(fromLine.number - 1)
       const text = state.sliceDoc(fromLine.from, toLine.to)
       const hasNL = toLine.to < state.doc.length && state.sliceDoc(toLine.to, toLine.to + 1) === '\n'
-      v.dispatch({ changes: [{ from: fromLine.from - (prev.length + 1), to: toLine.to + (hasNL ? 1 : 0), insert: text + (hasNL ? '\n' : '') + prev.text }] }); break
+      v.dispatch({ changes: [{ from: fromLine.from - (prevLine.length + 1), to: toLine.to + (hasNL ? 1 : 0), insert: text + (hasNL ? '\n' : '') + prevLine.text }] })
+      break
     }
     case 'moveDown': {
       if (toLine.number >= state.doc.lines) return
-      const next = state.doc.line(toLine.number + 1)
+      const nextLine = state.doc.line(toLine.number + 1)
       const text = state.sliceDoc(fromLine.from, toLine.to)
-      v.dispatch({ changes: [{ from: fromLine.from, to: next.to, insert: next.text + '\n' + text }] }); break
+      v.dispatch({ changes: [{ from: fromLine.from, to: nextLine.to, insert: nextLine.text + '\n' + text }] })
+      break
     }
     case 'removeEmpty': {
       const lines = state.doc.toString().split('\n').filter(l => l.trim() !== '')
-      v.dispatch({ changes: { from: 0, to: state.doc.length, insert: lines.join('\n') } }); break
+      v.dispatch({ changes: { from: 0, to: state.doc.length, insert: lines.join('\n') } })
+      break
     }
     case 'removeBlank': {
       const lines = state.doc.toString().split('\n').filter(l => l.length > 0)
-      v.dispatch({ changes: { from: 0, to: state.doc.length, insert: lines.join('\n') } }); break
+      v.dispatch({ changes: { from: 0, to: state.doc.length, insert: lines.join('\n') } })
+      break
     }
     case 'split': {
-      if (to > from) v.dispatch({ changes: { from, to, insert: [...state.sliceDoc(from, to)].join('\n') } }); break
+      if (to > from) {
+        const text = state.sliceDoc(from, to)
+        v.dispatch({ changes: { from, to, insert: [...text].join('\n') } })
+      }
+      break
     }
     case 'join': {
-      if (to > from) v.dispatch({ changes: { from, to, insert: state.sliceDoc(from, to).replace(/\n/g, ' ') } }); break
+      if (to > from) {
+        v.dispatch({ changes: { from, to, insert: state.sliceDoc(from, to).replace(/\n/g, ' ') } })
+      }
+      break
     }
     case 'removeDuplicate': {
       const lines = state.doc.toString().split('\n')
       const seen = new Set<string>()
-      v.dispatch({ changes: { from: 0, to: state.doc.length, insert: lines.filter(l => { if (seen.has(l)) return false; seen.add(l); return true }).join('\n') } }); break
+      v.dispatch({ changes: { from: 0, to: state.doc.length, insert: lines.filter(l => { if (seen.has(l)) return false; seen.add(l); return true }).join('\n') } })
+      break
     }
     case 'removeConsecutiveDuplicate': {
       const lines = state.doc.toString().split('\n')
-      const r: string[] =[]; let last = ''
-      for (const l of lines) { if (l !== last) { r.push(l); last = l } }
-      v.dispatch({ changes: { from: 0, to: state.doc.length, insert: r.join('\n') } }); break
+      const result: string[] = []; let last = ''
+      for (const l of lines) { if (l !== last) { result.push(l); last = l } }
+      v.dispatch({ changes: { from: 0, to: state.doc.length, insert: result.join('\n') } })
+      break
     }
     case 'reverse': {
       const lines = state.doc.toString().split('\n')
-      v.dispatch({ changes: { from: 0, to: state.doc.length, insert: lines.reverse().join('\n') } }); break
+      v.dispatch({ changes: { from: 0, to: state.doc.length, insert: lines.reverse().join('\n') } })
+      break
     }
     case 'randomize': {
       const lines = state.doc.toString().split('\n')
-      for (let i = lines.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1));[lines[i], lines[j]] = [lines[j], lines[i]] }
-      v.dispatch({ changes: { from: 0, to: state.doc.length, insert: lines.join('\n') } }); break
+      for (let i = lines.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [lines[i], lines[j]] = [lines[j], lines[i]] }
+      v.dispatch({ changes: { from: 0, to: state.doc.length, insert: lines.join('\n') } })
+      break
     }
     case 'insertAbove': insertBlankLine(true); break
     case 'insertBelow': insertBlankLine(false); break
@@ -321,39 +378,41 @@ function insertBlankLine(above: boolean) {
   else v.dispatch({ changes: { from: line.to, insert: '\n' }, selection: { anchor: line.to + 1 } })
 }
 
-// —— Tab/空格转换、Trim、Sort、Indent、Case ——
 function convertTabsSpaces(type: string) {
   const v = editorView.value
   if (!v) return
-  const ts = config.value?.editor?.tabSize || 4
-  const text = v.state.doc.toString()
+  const state = v.state
+  const tabSize = config.value?.editor?.tabSize || 4
+  const text = state.doc.toString()
   let result = text
   switch (type) {
-    case 'tabToSpaces': result = text.replace(/\t/g, ' '.repeat(ts)); break
-    case 'spacesAllToTabs': result = text.replace(new RegExp(` {${ts}}`, 'g'), '\t'); break
-    case 'spacesLeadingToTabs':
+    case 'tabToSpaces': result = text.replace(/\t/g, ' '.repeat(tabSize)); break
+    case 'spacesAllToTabs': result = text.replace(new RegExp(` {${tabSize}}`, 'g'), '\t'); break
+    case 'spacesLeadingToTabs': {
       result = text.split('\n').map(line => {
         const m = line.match(/^ +/)
         if (!m) return line
         const spaces = m[0].length
-        return '\t'.repeat(Math.floor(spaces / ts)) + ' '.repeat(spaces % ts) + line.slice(spaces)
+        return '\t'.repeat(Math.floor(spaces / tabSize)) + ' '.repeat(spaces % tabSize) + line.slice(spaces)
       }).join('\n')
       break
+    }
   }
-  if (result !== text) v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: result } })
+  if (result !== text) v.dispatch({ changes: { from: 0, to: state.doc.length, insert: result } })
 }
 
 function trimWhitespace(mode: string) {
   const v = editorView.value
   if (!v) return
-  const text = v.state.doc.toString()
+  const state = v.state
+  const text = state.doc.toString()
   let result = text
   switch (mode) {
     case 'head': result = text.split('\n').map(l => l.replace(/^[ \t]+/, '')).join('\n'); break
     case 'tail': result = text.split('\n').map(l => l.replace(/[ \t]+$/, '')).join('\n'); break
     case 'both': result = text.split('\n').map(l => l.replace(/^[ \t]+/, '').replace(/[ \t]+$/, '')).join('\n'); break
   }
-  if (result !== text) v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: result } })
+  if (result !== text) v.dispatch({ changes: { from: 0, to: state.doc.length, insert: result } })
 }
 
 function sortLines(direction: string) {
@@ -382,25 +441,27 @@ function sortLines(direction: string) {
 function indentLines() {
   const v = editorView.value
   if (!v) return
+  const state = v.state
   const ts = config.value?.editor?.tabSize || 4
   const useSpaces = config.value?.editor?.insertSpaces ?? true
   const indent = useSpaces ? ' '.repeat(ts) : '\t'
-  const fl = v.state.doc.lineAt(v.state.selection.main.from)
-  const tl = v.state.doc.lineAt(v.state.selection.main.to)
+  const fl = state.doc.lineAt(state.selection.main.from)
+  const tl = state.doc.lineAt(state.selection.main.to)
   const changes = []
-  for (let i = fl.number; i <= tl.number; i++) changes.push({ from: v.state.doc.line(i).from, insert: indent })
+  for (let i = fl.number; i <= tl.number; i++) changes.push({ from: state.doc.line(i).from, insert: indent })
   v.dispatch({ changes })
 }
 
 function dedentLines() {
   const v = editorView.value
   if (!v) return
+  const state = v.state
   const ts = config.value?.editor?.tabSize || 4
-  const fl = v.state.doc.lineAt(v.state.selection.main.from)
-  const tl = v.state.doc.lineAt(v.state.selection.main.to)
+  const fl = state.doc.lineAt(state.selection.main.from)
+  const tl = state.doc.lineAt(state.selection.main.to)
   const changes = []
   for (let i = fl.number; i <= tl.number; i++) {
-    const line = v.state.doc.line(i)
+    const line = state.doc.line(i)
     const t = line.text
     if (t.startsWith('\t')) changes.push({ from: line.from, to: line.from + 1 })
     else if (t.startsWith(' '.repeat(ts))) changes.push({ from: line.from, to: line.from + ts })
@@ -409,6 +470,7 @@ function dedentLines() {
   if (changes.length > 0) v.dispatch({ changes })
 }
 
+// ---- Case transform（原版逐字搬运） ----
 function splitWords(text: string): string[] {
   return text.trim().split(/[^A-Za-z0-9]+/).filter(Boolean).map(w => w.toLowerCase())
 }
@@ -448,27 +510,16 @@ function transformCase(type: string) {
   }
 }
 
-function cutCurrentLine() {
-  const v = editorView.value
-  if (!v) return
-  const sel = v.state.selection.main
-  const fromLine = v.state.doc.lineAt(sel.from)
-  const toLine = v.state.doc.lineAt(sel.to)
-  const text = v.state.sliceDoc(fromLine.from, toLine.to)
-  editorStore.pushClipboard(text)
-  const end = toLine.to + 1 > v.state.doc.length ? v.state.doc.length : toLine.to + 1
-  v.dispatch({ changes: { from: fromLine.from, to: end } })
-}
-
-// —— Toggle：wordWrap / showWhitespace / eol / webAddr ——
+// ==================== Toggle 类（原版语义） ====================
 function toggleWordWrap(enable?: boolean) {
   const v = editorView.value
   if (!v) return
   const cur = v.lineWrapping
   const w = enable !== undefined ? enable : !cur
-  v.dispatch({ effects: wordWrapCompartment.reconfigure(w ? EditorView.lineWrapping :[]) })
+  v.dispatch({ effects: wordWrapCompartment.reconfigure(w ? EditorView.lineWrapping : []) })
   if (settingStore.config) { settingStore.config.editor.wordWrap = w; settingStore.saveConfig() }
 }
+
 function toggleShowWhitespace(show: boolean) {
   const v = editorView.value
   if (!v) return
@@ -480,21 +531,30 @@ function toggleShowWhitespace(show: boolean) {
   }) : EditorView.theme({})
   v.dispatch({ effects: showWhitespaceCompartment.reconfigure(specialChars) })
 }
-function toggleShowAll() { toggleShowWhitespace(true) }
+
 function toggleEol(show: boolean) {
-  if (!editorView.value) return
-  if (show) editorView.value.dom.style.setProperty('--show-eol', '1')
-  else editorView.value.dom.style.removeProperty('--show-eol')
+  const v = editorView.value
+  if (!v) return
+  if (show) v.dom.style.setProperty('--show-eol', "'¶'")
+  else v.dom.style.removeProperty('--show-eol')
 }
+
+function toggleShowAll() {
+  const show = !(settingStore.config?.editor?.showWhitespace)
+  toggleShowWhitespace(show)
+  toggleEol(show)
+  if (settingStore.config) { settingStore.config.editor.showWhitespace = show; settingStore.saveConfig() }
+}
+
 function toggleWebAddr() {
   const v = editorView.value
   if (!v) return
   const on = !(settingStore.config?.ui?.showWebAddr)
   if (settingStore.config) { settingStore.config.ui.showWebAddr = on; settingStore.saveConfig() }
-  v.dispatch({ effects: webAddrCompartment.reconfigure(on ?[webAddrField]:[]) })
+  v.dispatch({ effects: webAddrCompartment.reconfigure(on ? [webAddrField] : []) })
 }
 
-// —— Marks / Highlight ——
+// ==================== Marks / Highlight ====================
 function markAll(term: string) {
   const v = editorView.value
   if (!v) return
@@ -503,6 +563,7 @@ function markAll(term: string) {
   let m: RegExpExecArray | null
   while ((m = re.exec(v.state.doc.toString())) !== null) {
     if (m[0]) ranges.push({ from: m.index, to: m.index + m[0].length, color: currentMarkColor })
+    if (m.index === re.lastIndex) re.lastIndex++
   }
   v.dispatch({ effects: setMarks.of(ranges) })
 }
@@ -523,10 +584,12 @@ function markKeywords(keywords: string[]) {
   const text = v.state.doc.toString()
   const ranges: MarkRange[] = []
   for (const kw of keywords) {
+    if (!kw) continue
     const re = new RegExp(escapeRegExp(kw), 'gi')
     let m: RegExpExecArray | null
     while ((m = re.exec(text)) !== null) {
       if (m[0]) ranges.push({ from: m.index, to: m.index + m[0].length, color: currentMarkColor })
+      if (m.index === re.lastIndex) re.lastIndex++
     }
   }
   v.dispatch({ effects: setMarks.of(ranges) })
@@ -545,143 +608,181 @@ function highlightWordAtCursor() {
   if (word) v.dispatch({ effects: addHighlightWord.of({ from: word.from, to: word.to }) })
 }
 function clearWordHighlight() { editorView.value?.dispatch({ effects: clearHighlightWord.of(null) }) }
+function clearAllMarks() { editorView.value?.dispatch({ effects: clearMarksEffect.of(null) }) }
 
-// —— JSON / XML 格式化 ——
+// ==================== 查找（原版 doFindAction） ====================
+function doFindAction(dir: 'next' | 'prev') {
+  const v = editorView.value
+  if (!v || !lastSearchTerm) return
+  const state = v.state
+  const doc = state.doc.toString()
+  const from = state.selection.main.head
+  const regex = new RegExp(escapeRegExp(lastSearchTerm), 'gi')
+  let target: number | null = null
+  if (dir === 'next') {
+    const after = doc.slice(from).match(regex)
+    target = after ? from + (after.index ?? 0) : (doc.match(regex)?.index ?? null)
+    if (target !== null && target < from) target = doc.match(regex)?.index ?? null
+  } else {
+    const matches = [...doc.slice(0, from).matchAll(new RegExp(escapeRegExp(lastSearchTerm), 'gi'))]
+    target = matches.length > 0 ? (matches[matches.length - 1].index ?? null) : ([...doc.matchAll(new RegExp(escapeRegExp(lastSearchTerm), 'gi'))].pop()?.index ?? null)
+  }
+  if (target !== null) {
+    v.dispatch({ selection: { anchor: target, head: target + lastSearchTerm.length }, scrollIntoView: true })
+    v.focus()
+  }
+}
+
+// ==================== JSON / XML 格式化（原版实现） ====================
 async function formatJsonSelection() {
   const v = editorView.value
   if (!v) return
-  const sel = v.state.selection.main
-  const text = sel.from !== sel.to ? v.state.sliceDoc(sel.from, sel.to) : v.state.doc.toString()
-  if (!text.trim()) return
+  const { from, to } = v.state.selection.main
+  const text = from === to ? v.state.doc.toString() : v.state.sliceDoc(from, to)
   try {
-    const r = await FormatJSON(JSON.stringify(JSON.parse(text)), 'json', 'json')
-    const out = sel.from !== sel.to ? r : JSON.stringify(JSON.parse(text), null, 2)
-    v.dispatch({ changes: { from: sel.from, to: sel.to, insert: out } })
-  } catch (e: any) { ElMessage.error('JSON 格式化失败: ' + (e?.message || e)) }
+    const r = await FormatJSON(text, 2)
+    if (r && r.success && r.content) {
+      if (from === to) v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: r.content } })
+      else v.dispatch({ changes: { from, to, insert: r.content } })
+      ElMessage.success('JSON 格式化成功')
+    } else if (r && !r.success) {
+      ElMessage.error(`JSON 格式化失败: ${r.error?.message || '未知错误'}`)
+    }
+  } catch (e: any) { ElMessage.error(e?.message || 'JSON 格式化失败') }
+}
+function prettyPrintXml(xml: string): string {
+  try {
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(xml, 'application/xml')
+    if (doc.querySelector('parsererror')) return ''
+    const serialize = (node: Element, level: number): string => {
+      const pad = '  '.repeat(level)
+      let out = `${pad}<${node.nodeName}`
+      for (const attr of Array.from(node.attributes)) out += ` ${attr.name}="${attr.value}"`
+      const text = (node.textContent || '').trim()
+      if (node.children.length === 0) {
+        out += `>${text}</${node.nodeName}>`
+      } else {
+        out += '>\n'
+        for (const child of Array.from(node.children)) out += serialize(child, level + 1) + '\n'
+        out += `${pad}</${node.nodeName}>`
+      }
+      return out
+    }
+    const root = doc.documentElement
+    return '<?xml version="1.0" encoding="UTF-8"?>\n' + serialize(root, 0)
+  } catch { return '' }
 }
 function formatXmlSelection() {
   const v = editorView.value
   if (!v) return
-  const sel = v.state.selection.main
-  const text = sel.from !== sel.to ? v.state.sliceDoc(sel.from, sel.to) : v.state.doc.toString()
-  if (!text.trim()) return
-  try {
-    const formatted = xmlFormat(text, { indentation: '  ', collapseContent: true, lineSeparator: '\n' })
-    if (sel.from !== sel.to) v.dispatch({ changes: { from: sel.from, to: sel.to, insert: formatted } })
-    else v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: formatted } })
-  } catch (e: any) { ElMessage.error('XML 格式化失败: ' + (e?.message || e)) }
+  const { from, to } = v.state.selection.main
+  const text = from === to ? v.state.doc.toString() : v.state.sliceDoc(from, to)
+  const formatted = prettyPrintXml(text)
+  if (!formatted) { ElMessage?.warning?.('XML 格式化失败'); return }
+  if (from === to) v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: formatted } })
+  else v.dispatch({ changes: { from, to, insert: formatted } })
 }
 async function minifyJsonSelection() {
   const v = editorView.value
   if (!v) return
-  const sel = v.state.selection.main
-  const text = sel.from !== sel.to ? v.state.sliceDoc(sel.from, sel.to) : v.state.doc.toString()
-  if (!text.trim()) return
+  const { from, to } = v.state.selection.main
+  const text = from === to ? v.state.doc.toString() : v.state.sliceDoc(from, to)
   try {
-    const r = await Convert(text, 'json', 'json')
-    v.dispatch({ changes: { from: sel.from, to: sel.to, insert: r } })
-  } catch (e: any) { ElMessage.error('JSON 压缩失败: ' + (e?.message || e)) }
+    const r = await MinifyJSON(text)
+    if (r && r.success && r.content) {
+      if (from === to) v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: r.content } })
+      else v.dispatch({ changes: { from, to, insert: r.content } })
+      ElMessage.success('JSON 压缩成功')
+    } else if (r && !r.success) {
+      ElMessage.error(`JSON 压缩失败: ${r.error?.message || '未知错误'}`)
+    }
+  } catch (e: any) { ElMessage.error(e?.message || 'JSON 压缩失败') }
 }
 async function validateJsonSelection() {
   const v = editorView.value
   if (!v) return
-  const sel = v.state.selection.main
-  const text = sel.from !== sel.to ? v.state.sliceDoc(sel.from, sel.to) : v.state.doc.toString()
-  try { JSON.parse(text); ElMessage.success('JSON 校验通过') }
-  catch (e: any) { ElMessage.error('JSON 校验失败: ' + (e?.message || e)) }
+  const { from, to } = v.state.selection.main
+  const text = from === to ? v.state.doc.toString() : v.state.sliceDoc(from, to)
+  try {
+    const r = await ValidateJSON(text)
+    if (r) {
+      if (r.success) ElMessage.success('JSON 格式正确')
+      else ElMessage.error(`JSON 格式错误: ${r.error?.message || r.error || '未知错误'}`)
+    }
+  } catch (e: any) { ElMessage.error(e?.message || 'JSON 校验失败') }
 }
 
-// —— Goto bracket / 位置历史 ——
+// ==================== 括号 / 位置历史（原版实现） ====================
 function gotoBracket() {
   const v = editorView.value
   if (!v) return
-  const sel = v.state.selection.main
-  const text = v.state.doc.toString()
-  const pairs: Record<string, string> = { '{': '}', '[': ']', '(': ')', '}': '{', ']': '[', ')': '(' }
-  let depth = 1
-  const ch = v.state.doc.sliceString(sel.head, sel.head + 1)
-  const open = pairs[ch]
-  if (open) {
-    let i = sel.head + 1
-    while (i < text.length) {
-      if (text[i] === ch) depth++
-      else if (text[i] === open) { depth--; if (depth === 0) { v.dispatch({ selection: { anchor: i + 1 }, scrollIntoView: true }); return } }
-      i++
-    }
-  } else {
-    let i = sel.head - 1; depth = 1
-    while (i >= 0) {
-      if (text[i] === ch) depth++
-      else if (text[i] === open) { depth--; if (depth === 0) { v.dispatch({ selection: { anchor: i }, scrollIntoView: true }); return } }
-      i--
+  const head = v.state.selection.main.head
+  const doc = v.state.doc.toString()
+  const pairs: Record<string, string> = { '(': ')', '[': ']', '{': '}', ')': '(', ']': '[', '}': '{' }
+  const open = '([{'
+  const close = ')]}'
+  for (let off = 0; off <= 1; off++) {
+    const ch = doc[head + off]
+    if (ch && (open.includes(ch) || close.includes(ch))) {
+      const forward = open.includes(ch)
+      const target = pairs[ch]
+      let depth = 0, i = head + off
+      if (forward) {
+        for (i = head + off + 1; i < doc.length; i++) {
+          if (doc[i] === ch) depth++
+          else if (doc[i] === target) { if (depth === 0) break; depth-- }
+        }
+      } else {
+        for (i = head + off - 1; i >= 0; i--) {
+          if (doc[i] === ch) depth++
+          else if (doc[i] === target) { if (depth === 0) break; depth-- }
+        }
+      }
+      if (i >= 0 && i < doc.length) {
+        v.dispatch({ selection: { anchor: i }, scrollIntoView: true })
+        v.focus()
+      }
+      return
     }
   }
 }
 
-const lastPosLine = { v: -1, l: -1 }
-let posTimer: number | null = null
+// ---- Position history（原版：pushPosition + goBack/ForwardPosition） ----
+let lastPushedPos = -1
+let lastPushedLine = -1
+let posTimer: any = null
 function recordPosition(pos: number) {
   const v = editorView.value
   if (!v) return
   const line = v.state.doc.lineAt(pos).number
-  if (posTimer) window.clearTimeout(posTimer)
-  posTimer = window.setTimeout(() => {
-    if (Math.abs(line - lastPosLine.l) >= 5 || lastPosLine.l < 0) {
+  clearTimeout(posTimer)
+  posTimer = setTimeout(() => {
+    if (Math.abs(line - lastPushedLine) >= 5 || lastPushedLine < 0) {
       editorStore.pushPosition(props.tab.id, pos, 0)
-      lastPosLine.v = pos; lastPosLine.l = line
+      lastPushedPos = pos; lastPushedLine = line
     }
   }, 350)
 }
 function gotoPrevPosition() {
-  const v = editorView.value
-  if (!v) return
-  const p = editorStore.popPrevPosition(props.tab.id)
-  if (p !== null) v.dispatch({ selection: { anchor: p.pos }, scrollIntoView: true })
+  const r = editorStore.goBackPosition(props.tab.id)
+  if (r && editorView.value) { editorView.value.dispatch({ selection: { anchor: r.pos }, scrollIntoView: true }) }
 }
 function gotoNextPosition() {
-  const v = editorView.value
-  if (!v) return
-  const p = editorStore.popNextPosition(props.tab.id)
-  if (p !== null) v.dispatch({ selection: { anchor: p.pos }, scrollIntoView: true })
+  const r = editorStore.goForwardPosition(props.tab.id)
+  if (r && editorView.value) { editorView.value.dispatch({ selection: { anchor: r.pos }, scrollIntoView: true }) }
 }
 
-// —— Find next / prev ——
-function doFindAction(dir: 'next' | 'prev') {
-  const v = editorView.value
-  if (!v || !lastSearchTerm) return
-  const text = v.state.doc.toString()
-  const cur = v.state.selection.main.head
-  let idx: number
-  try {
-    if (lastSearchTerm.startsWith('/') && lastSearchTerm.endsWith('/') && lastSearchTerm.length > 2) {
-      const re = new RegExp(lastSearchTerm.slice(1, -1), 'g')
-      re.lastIndex = cur
-      idx = dir === 'next' ? (re.exec(text)?.index ?? -1) : -1
-      if (dir === 'prev') {
-        const rev = new RegExp(lastSearchTerm.slice(1, -1), 'g')
-        let last = -1; let m: RegExpExecArray | null
-        while ((m = rev.exec(text)) !== null) { if (m.index < cur) last = m.index; else break }
-        idx = last
-      }
-    } else {
-      const lower = text.toLowerCase(); const t = lastSearchTerm.toLowerCase()
-      idx = dir === 'next' ? lower.indexOf(t, cur) : lower.lastIndexOf(t, cur - 1)
-    }
-  } catch { return }
-  if (idx >= 0) v.dispatch({ selection: { anchor: idx, head: idx + lastSearchTerm.length }, scrollIntoView: true })
-}
-
-// ==================== 编辑器创建 / 销毁 ====================
+// ==================== 编辑器创建（原版装配顺序） ====================
 function createEditor() {
   if (!editorContainer.value) return
   isInitializing = true
   if (editorView.value) { editorView.value.destroy(); editorView.value = null }
 
+  const langExtensions = language.getLanguageExtension(props.tab.language)
   const isDark = colors.value.isDark
   const ed = config.value?.editor
-  const langExtensions = language.getLanguageExtension(props.tab.language)
 
-  // markdown mermaid 初始化
   if (props.tab.language === 'markdown') markdown.initMermaid(isDark)
 
   const state = EditorState.create({
@@ -691,29 +792,37 @@ function createEditor() {
       highlightActiveLineGutter(),
       highlightSpecialChars(),
       history(),
-      keymapExt.buildPrecKeymap(),
-      foldCompartment.of(theme.buildFoldGutter(isDark)),
+      foldGutter({}),
       dropCursor(),
       EditorState.allowMultipleSelections.of(true),
       indentOnInput(),
       syntaxHighlightCompartment.of(theme.buildSyntaxHighlight()),
       bracketMatching(),
-      autocompletion({ override: [completion.snippetCompletionSource as any] }),
+      closeBrackets(),
+      autocompletion({
+        override: [completion.snippetCompletionSource as any],
+      }),
       rectangularSelection(),
       crosshairCursor(),
       highlightActiveLine(),
-      drawSelection(),
-      // Language
+      keymap.of([
+        ...closeBracketsKeymap,
+        ...defaultKeymap,
+        ...historyKeymap,
+        ...foldKeymap,
+        ...completionKeymap,
+        ...lintKeymap,
+        indentWithTab,
+      ]),
       langCompartment.of(langExtensions),
-      // Compartment 化外观（字体 / 主题 / web addr / word wrap / show whitespace）
+      foldCompartment.of(theme.buildFoldGutter(isDark)),
       appearanceCompartment.of(theme.buildAppearanceTheme()),
+      wordWrapCompartment.of(ed?.wordWrap ? EditorView.lineWrapping : []),
       showWhitespaceCompartment.of(EditorView.theme({})),
-      wordWrapCompartment.of(ed?.wordWrap ? EditorView.lineWrapping :[]),
-      webAddrCompartment.of(settingStore.config?.ui?.showWebAddr ?[webAddrField]:[]),
-      // 多色 mark / 高亮词 StateField
+      tabSizeCompartment.of(EditorState.tabSize.of(ed?.tabSize || 4)),
+      webAddrCompartment.of(settingStore.config?.ui?.showWebAddr ? [webAddrField] : []),
       markField,
       highlightWordField,
-      // updateListener（content 同步 + macro + cursor + position history）
       EditorView.updateListener.of((update) => {
         if (update.docChanged && !isInitializing) {
           editorStore.updateTabContent(props.tab.id, update.state.doc.toString())
@@ -729,45 +838,69 @@ function createEditor() {
     ],
   })
 
-  editorView.value = new EditorView({ state, parent: editorContainer.value })
+  const view = new EditorView({ state, parent: editorContainer.value })
+  editorView.value = view
   Promise.resolve().then(() => { isInitializing = false })
 
-  // 书签同步（bug #1 修复）
+  // 文档地图：滚动时同步视口（rAF 节流，原版实现）
+  const scroller = view.scrollDOM
+  let minimapRaf = 0
+  const syncMinimap = () => {
+    minimapRaf = 0
+    minimapViewport.value = {
+      scrollTop: scroller.scrollTop,
+      scrollHeight: scroller.scrollHeight,
+      clientHeight: scroller.clientHeight,
+    }
+  }
+  scroller.addEventListener('scroll', () => {
+    if (!minimapRaf) minimapRaf = requestAnimationFrame(syncMinimap)
+  }, { passive: true })
+  syncMinimap()
+
+  // 恢复上次光标位置（原版实现）
+  if (props.tab.cursorPosition.line > 1) {
+    try {
+      const line = state.doc.line(props.tab.cursorPosition.line)
+      view.dispatch({ selection: { anchor: line.from + props.tab.cursorPosition.column - 1 }, scrollIntoView: true })
+    } catch (e) { console.warn(e) }
+  }
+
+  // bug #1 修复：书签从 DB 同步（tab 打开时）
   bookmark.scheduleSyncFromDB(props.tab)
 }
 
-function destroyEditor() {
-  if (editorView.value) {
-    editorView.value.destroy()
-    editorView.value = null
-  }
-}
-
-// ==================== Tab 切换 / 文件变化 ====================
+// ==================== Tab 切换 / 状态保存（原版 in-place swap） ====================
 function saveEditorState() {
   const v = editorView.value
   if (!v) return
   const pos = v.state.selection.main.head
   const line = v.state.doc.lineAt(pos)
   editorStore.updateCursorPosition(props.tab.id, line.number, pos - line.from + 1)
+  editorStore.updateScrollPosition(props.tab.id, v.scrollDOM.scrollTop, v.scrollDOM.scrollLeft)
 }
+
 function restoreEditorState() {
   const v = editorView.value
   if (!v) return
-  const cursor = props.tab.cursorPosition
-  if (cursor) {
-    const line = Math.max(1, Math.min(cursor.line, v.state.doc.lines))
-    const pos = v.state.doc.line(line).from + Math.max(0, cursor.column - 1)
-    v.dispatch({ selection: { anchor: pos }, scrollIntoView: true })
+  const doc = v.state.doc
+  const savedLine = props.tab.cursorPosition?.line || 1
+  const savedCol = props.tab.cursorPosition?.column || 1
+  const line = doc.line(Math.min(savedLine, doc.lines))
+  const pos = line.from + Math.min(Math.max(savedCol - 1, 0), line.length)
+  v.dispatch({ selection: { anchor: pos }, scrollIntoView: true })
+  if (props.tab.scrollPosition?.top) {
+    v.scrollDOM.scrollTo({
+      top: props.tab.scrollPosition.top,
+      left: props.tab.scrollPosition.left || 0,
+    })
   }
 }
 
 function updateLanguageForTab() {
   const v = editorView.value
   if (!v) return
-  v.dispatch({
-    effects: langCompartment.reconfigure(language.getLanguageExtension(props.tab.language)),
-  })
+  v.dispatch({ effects: langCompartment.reconfigure(language.getLanguageExtension(props.tab.language)) })
 }
 
 function reconfigureAppearance() {
@@ -782,69 +915,91 @@ function reconfigureAppearance() {
   })
 }
 
-// ==================== 右键菜单 dispatch ====================
-function handleContextMenuDispatch(cmd: string) {
-  const dispatcher = contextMenu.run((c) => handleEditorCommand(new CustomEvent('cmd', { detail: c })))
-  return dispatcher(cmd)
-}
-
-// ==================== 主命令分发（editor-command 事件） ====================
+// ==================== 主命令分发 ====================
 function handleEditorCommand(e: Event) {
   const detail = (e as CustomEvent).detail
   if (!detail) return
-  let cmd: string, args: any[] =[]
+  let cmd: string, args: any[] = []
   if (typeof detail === 'string') cmd = detail
-  else { cmd = detail.cmd; args = detail.args ||[] }
+  else { cmd = detail.cmd; args = detail.args || [] }
   if (!cmd) return
   cmd = CMD_ALIASES[cmd] || cmd
 
-  // 查找词同步 / 高亮（修复 F3 失灵）
+  // 查找词同步（F3 依赖）与批量高亮
   if (cmd === 'set-search-term') { setSearchTerm(String(args[0] ?? '')); return }
   if (cmd === 'highlight-all') { highlightRanges(args[0] as number[], Number(args[1] ?? 0)); return }
-  if (cmd === 'show-goto-line') { showGotoLineDialog(); return }
 
-  // 右键菜单命令
-  if (cmd === 'cut') { cutSelection(); return }
-  if (cmd === 'copy') { copySelection(); return }
-  if (cmd === 'paste') { pasteAtCursor(); return }
-  if (cmd === 'select-all') { selectAll(); return }
+  // 基础编辑
   if (cmd === 'undo') { undoAction(); return }
   if (cmd === 'redo') { redoAction(); return }
+  if (cmd === 'cut') { doEditorAction('cut'); return }
+  if (cmd === 'copy') { doEditorAction('copy'); return }
+  if (cmd === 'paste') { doEditorAction('paste'); return }
+  if (cmd === 'select-all') { doEditorAction('selectAll'); return }
+  if (cmd === 'delete') { deleteSelectionOrChar(); return }
+  if (cmd === 'line-cut') { cutCurrentLine(); return }
+  if (cmd === 'copy-line') { lineOperation('duplicate'); return }
+
+  // 查找 / 跳转
   if (cmd === 'find') { document.dispatchEvent(new CustomEvent('ndd-key', { detail: 'find' })); return }
   if (cmd === 'replace') { document.dispatchEvent(new CustomEvent('ndd-key', { detail: 'replace' })); return }
-  if (cmd === 'duplicate') { lineOperation('duplicate'); return }
-  if (cmd === 'delete-line') { lineOperation('remove'); return }
-  if (cmd === 'move-up') { lineOperation('moveUp'); return }
-  if (cmd === 'move-down') { lineOperation('moveDown'); return }
-  if (cmd === 'uppercase') { transformCase('upper'); return }
-  if (cmd === 'lowercase') { transformCase('lower'); return }
-  if (cmd === 'titlecase') { transformCase('title'); return }
-  if (cmd === 'format-json') { formatJsonSelection(); return }
-  if (cmd === 'format-xml') { formatXmlSelection(); return }
-  if (cmd === 'minify-json') { minifyJsonSelection(); return }
-  if (cmd === 'validate-json') { validateJsonSelection(); return }
-  if (cmd === 'tab-to-spaces') { convertTabsSpaces('tabToSpaces'); return }
-  if (cmd === 'spaces-to-tabs') { convertTabsSpaces('spacesLeadingToTabs'); return }
-  if (cmd === 'trim-trailing') { trimWhitespace('tail'); return }
+  if (cmd === 'find-next') { doFindAction('next'); return }
+  if (cmd === 'find-prev') { doFindAction('prev'); return }
+  if (cmd === 'show-goto-line') { showGotoLineDialog(); return }
+  if (cmd === 'goto-line' && args[0]) { gotoLine(args[0] as number); return }
+  if (cmd === 'scroll-to-pos' && args[0] && editorView.value) { editorView.value.dispatch({ selection: { anchor: args[0] }, scrollIntoView: true }); return }
+  if (cmd === 'scroll-to-line' && args[0]) { gotoLine(args[0] as number); return }
+  if (cmd === 'scroll-to-end' && editorView.value) { editorView.value.dispatch({ selection: { anchor: editorView.value.state.doc.length }, scrollIntoView: true }); return }
+  if (cmd === 'goto-bracket') { gotoBracket(); return }
+  if (cmd === 'prev-position') { gotoPrevPosition(); return }
+  if (cmd === 'next-position') { gotoNextPosition(); return }
 
-  // 通用别名（line-*/sort-*/trim-*）
+  // 行 / 文本变换
   if (cmd.startsWith('case-')) { transformCase(cmd.replace('case-', '')); return }
   if (cmd.startsWith('line-')) { lineOperation(cmd.replace('line-', '')); return }
   if (cmd.startsWith('sort-')) { sortLines(cmd.replace('sort-', '')); return }
   if (cmd.startsWith('trim-')) { trimWhitespace(cmd.replace('trim-', '')); return }
+  if (cmd === 'tab-to-spaces') { convertTabsSpaces('tabToSpaces'); return }
+  if (cmd === 'spaces-all-to-tabs') { convertTabsSpaces('spacesAllToTabs'); return }
+  if (cmd === 'spaces-leading-to-tabs') { convertTabsSpaces('spacesLeadingToTabs'); return }
+  if (cmd === 'indent') { indentLines(); return }
+  if (cmd === 'dedent') { dedentLines(); return }
+  if (cmd === 'insert-blank-above') { insertBlankLine(true); return }
+  if (cmd === 'insert-blank-below') { insertBlankLine(false); return }
+  if ((cmd === 'insert-text' || cmd === 'insert-snippet') && args[0]) {
+    editorView.value?.dispatch({ changes: { from: editorView.value.state.selection.main.head, insert: String(args[0]) } })
+    return
+  }
 
-  // 编辑行为
-  if (cmd === 'delete') { deleteSelectionOrChar(); return }
-  if (cmd === 'line-cut') { cutCurrentLine(); return }
-  if (cmd === 'copy-line') { lineOperation('duplicate'); return }
-  if (cmd === 'find-next') { doFindAction('next'); return }
-  if (cmd === 'find-prev') { doFindAction('prev'); return }
+  // 注释
+  if (cmd === 'comment-line') { if (editorView.value) toggleComment(editorView.value); return }
+  if (cmd === 'comment-block') { if (editorView.value) toggleBlockComment(editorView.value); return }
+
+  // 自动换行 / 空白 / 行尾 / web 地址 / minimap
   if (cmd === 'wordwrap-on') { toggleWordWrap(true); return }
   if (cmd === 'wordwrap-off') { toggleWordWrap(false); return }
+  if (cmd === 'toggle-word-wrap') { toggleWordWrap(); return }
   if (cmd === 'show-whitespace') { toggleShowWhitespace(true); return }
   if (cmd === 'hide-whitespace') { toggleShowWhitespace(false); return }
+  if (cmd === 'toggle-whitespace') {
+    const on = !(settingStore.config?.editor?.showWhitespace)
+    toggleShowWhitespace(on)
+    if (settingStore.config) { settingStore.config.editor.showWhitespace = on; settingStore.saveConfig() }
+    return
+  }
+  if (cmd === 'show-eol') { toggleEol(true); return }
+  if (cmd === 'hide-eol') { toggleEol(false); return }
+  if (cmd === 'toggle-eol') {
+    const on = !(settingStore.config?.editor?.showEol)
+    toggleEol(on)
+    if (settingStore.config) { settingStore.config.editor.showEol = on; settingStore.saveConfig() }
+    return
+  }
+  if (cmd === 'show-all') { toggleShowAll(); return }
+  if (cmd === 'toggle-webaddr') { toggleWebAddr(); return }
+  if (cmd === 'toggle-minimap') { showMinimap.value = !showMinimap.value; return }
 
-  // 书签（通过 useEditorBookmark）
+  // 书签（useEditorBookmark）
   if (cmd === 'toggle-bookmark') { bookmark.toggleBookmark(editorView.value as any, props.tab); return }
   if (cmd === 'next-bookmark') { bookmark.gotoNextBookmark(editorView.value as any, props.tab, gotoLine); return }
   if (cmd === 'prev-bookmark') { bookmark.gotoPrevBookmark(editorView.value as any, props.tab, gotoLine); return }
@@ -855,8 +1010,9 @@ function handleEditorCommand(e: Event) {
   if (cmd === 'delete-unbookmark-lines') { bookmark.deleteUnbookmarkLines(editorView.value as any, props.tab); return }
   if (cmd === 'paste-bookmark-lines') { bookmark.pasteBookmarkLines(editorView.value as any, props.tab); return }
 
-  // 高亮 / 标记
+  // 标记 / 高亮
   if (cmd === 'clear-mark' || cmd === 'clear-highlight' || cmd === 'clear-all-highlight') { clearWordHighlight(); return }
+  if (cmd === 'clear-all-marks' || cmd === 'clear-marks') { clearAllMarks(); return }
   if (cmd === 'word-highlight') { highlightWordAtCursor(); return }
   if (cmd === 'mark-color') { highlightWordAtCursor(); return }
   if (cmd === 'mark-all') {
@@ -864,6 +1020,7 @@ function handleEditorCommand(e: Event) {
     else markAll(String(args[0] ?? lastSearchTerm))
     return
   }
+  if (cmd === 'mark-keywords' && args[0]) { markKeywords(args[0] as string[]); return }
   if (cmd === 'mark-red') { currentMarkColor = 1; markSelectionOrWord(); return }
   if (cmd === 'mark-yellow') { currentMarkColor = 0; markSelectionOrWord(); return }
   if (cmd === 'mark-blue') { currentMarkColor = 2; markSelectionOrWord(); return }
@@ -873,69 +1030,35 @@ function handleEditorCommand(e: Event) {
   if (cmd === 'mark-4') { currentMarkColor = 3; markSelectionOrWord(); return }
   if (cmd === 'mark-5') { currentMarkColor = 4; markSelectionOrWord(); return }
   if (cmd === 'mark-loop') { currentMarkColor = (currentMarkColor + 1) % 5; markSelectionOrWord(); return }
-  if (cmd === 'mark-keywords') { markKeywords(args[0] as string[]); return }
 
-  // 列编辑（通过 useEditorColumnMode）
-  if (cmd === 'column-mode' || cmd === 'column-block') { columnMode.enterColumnMode(); return }
+  // 格式化
+  if (cmd === 'format-json') { formatJsonSelection(); return }
+  if (cmd === 'format-xml') { formatXmlSelection(); return }
+  if (cmd === 'minify-json') { minifyJsonSelection(); return }
+  if (cmd === 'validate-json') { validateJsonSelection(); return }
 
-  // MD 模式
+  // 列块 / 宏 / MD
+  if (cmd === 'column-mode') { columnMode.toggleColumnMode(); return }
+  if (cmd === 'column-block') { columnMode.enterColumnMode(); return }
   if (cmd === 'toggle-md-mode') { markdown.toggleMdMode(); return }
 
-  // 光标 / 跳转
-  if (cmd === 'goto-bracket') { gotoBracket(); return }
-  if (cmd === 'prev-position') { gotoPrevPosition(); return }
-  if (cmd === 'next-position') { gotoNextPosition(); return }
-  if ((cmd === 'insert-text' || cmd === 'insert-snippet') && args[0]) {
-    editorView.value?.dispatch({ changes: { from: editorView.value.state.selection.main.head, insert: String(args[0]) } })
-    return
-  }
-  if (cmd === 'goto-line' && args[0]) { gotoLine(args[0] as number); return }
-  if (cmd === 'scroll-to-pos' && args[0] && editorView.value) {
-    editorView.value.dispatch({ selection: { anchor: args[0] }, scrollIntoView: true }); return
-  }
-  if (cmd === 'scroll-to-line' && args[0]) { gotoLine(args[0] as number); return }
-  if (cmd === 'scroll-to-end' && editorView.value) {
-    editorView.value.dispatch({ selection: { anchor: editorView.value.state.doc.length }, scrollIntoView: true }); return
-  }
-  if (cmd === 'insert-blank-above') { insertBlankLine(true); return }
-  if (cmd === 'insert-blank-below') { insertBlankLine(false); return }
-
-  // 行操作细粒度
-  if (cmd === 'line-duplicate') { lineOperation('duplicate'); return }
-  if (cmd === 'line-remove') { lineOperation('remove'); return }
-  if (cmd === 'line-moveUp') { lineOperation('moveUp'); return }
-  if (cmd === 'line-moveDown') { lineOperation('moveDown'); return }
-  if (cmd === 'line-removeEmpty') { lineOperation('removeEmpty'); return }
-  if (cmd === 'line-removeEmptyCbc') { lineOperation('removeBlank'); return }
-  if (cmd === 'line-reverse') { lineOperation('reverse'); return }
-  if (cmd === 'line-split') { lineOperation('split'); return }
-  if (cmd === 'line-join') { lineOperation('join'); return }
-  if (cmd === 'line-removeDuplicate') { lineOperation('removeDuplicate'); return }
-
-  // 缩进（CodeMirror 自带 keymap 也可触发，这里仅暴露给命令系统）
-  if (cmd === 'indent') { indentLines(); return }
-  if (cmd === 'dedent') { dedentLines(); return }
-
-  // 视图切换
-  if (cmd === 'show-all') { toggleShowAll(); return }
-  if (cmd === 'show-eol') { toggleEol(true); return }
-  if (cmd === 'hide-eol') { toggleEol(false); return }
-  if (cmd === 'toggle-webaddr') { toggleWebAddr(); return }
-
-  // 列编辑插入
+  // 列编辑插入（ColumnEditWin 派发）
   if (cmd === 'column-insert-text' && args[0]) {
     const v = editorView.value
     if (!v) return
     const text = String(args[0])
     const ranges = [...v.state.selection.ranges].sort((a, b) => b.from - a.from)
-    if (ranges.length <= 1) v.dispatch({ changes: { from: v.state.selection.main.head, insert: text } })
-    else v.dispatch({ changes: ranges.map(r => ({ from: r.from, insert: text })) })
+    if (ranges.length <= 1) {
+      v.dispatch({ changes: { from: v.state.selection.main.head, insert: text } })
+    } else {
+      v.dispatch({ changes: ranges.map(r => ({ from: r.from, insert: text })) })
+    }
     return
   }
   if (cmd === 'column-insert-num' && args[0]) {
     const opts = args[0]
     let val = opts.init
-    const lines: string[] =[]
+    const lines: string[] = []
     for (let i = 0; i < opts.repeat; i++) {
       let s = val.toString(opts.radix || 10)
       if (opts.radix === 16 && opts.capital) s = s.toUpperCase()
@@ -947,38 +1070,64 @@ function handleEditorCommand(e: Event) {
   }
 }
 
-// ==================== Minimap & 显示 ====================
-const showMinimap = ref(true)
-const minimapViewport = ref<{ top: number; height: number }>({ top: 0, height: 0 })
-function syncMinimap() {
+// ==================== Minimap ====================
+const showMinimap = ref(false)
+const minimapViewport = ref({ scrollTop: 0, scrollHeight: 0, clientHeight: 0 })
+
+// ==================== Tab 切换（原版 in-place swap） ====================
+watch(() => props.tab.id, (newId, oldId) => {
+  if (!editorView.value) {
+    createEditor()
+    return
+  }
+  if (oldId) saveEditorState()
+  isInitializing = true
+  editorView.value.dispatch({
+    changes: { from: 0, to: editorView.value.state.doc.length, insert: props.tab.content },
+  })
+  updateLanguageForTab()
+  restoreEditorState()
+  // bug #1 修复：新 tab 的书签从 DB 同步
+  bookmark.scheduleSyncFromDB(props.tab)
+  nextTick(() => {
+    isInitializing = false
+    editorView.value?.focus()
+  })
+})
+
+// 外部内容变化（tail-f / reloadAsText / 外部重载）→ 同步到编辑器（原版行为）
+watch(() => props.tab.content, (nc) => {
   const v = editorView.value
   if (!v) return
-  const el = v.scrollDOM
-  const top = el.scrollTop
-  const visibleH = el.clientHeight
-  const totalH = el.scrollHeight
-  minimapViewport.value = { top, height: visibleH }
-}
-let roScroll: ResizeObserver | null = null
-
-// ==================== 监听 ====================
-watch(() => props.tab.id, () => {
-  saveEditorState()
-  destroyEditor()
-  createEditor()
-  restoreEditorState()
+  const current = v.state.doc.toString()
+  if (current !== nc) {
+    isInitializing = true
+    v.dispatch({ changes: { from: 0, to: current.length, insert: nc } })
+    queueMicrotask(() => { isInitializing = false })
+  }
 })
+
 watch(() => props.tab.path, () => {
-  // tab 路径变化（重命名 / 新打开）→ 重新拉书签（bug #1 修复）
+  // bug #1 修复：文件重命名 / 重新打开后重新同步书签
   bookmark.scheduleSyncFromDB(props.tab)
 })
+
 watch(() => props.tab.language, () => {
   updateLanguageForTab()
   if (props.tab.language === 'markdown') markdown.initMermaid(colors.value.isDark)
 })
-watch(() => colors.value.isDark, () => reconfigureAppearance())
-watch(() => settingStore.config?.editor?.wordWrap, (on) => { if (on !== undefined) toggleWordWrap(on) })
+
+watch(() => settingStore.config?.theme?.currentTheme, () => reconfigureAppearance())
+watch(() => config.value?.editor?.tabSize, (s) => { if (editorView.value && s) editorView.value.dispatch({ effects: tabSizeCompartment.reconfigure(EditorState.tabSize.of(s)) }) })
+watch(() => config.value?.editor?.wordWrap, (w) => { if (w !== undefined) toggleWordWrap(w) })
+watch(() => config.value?.editor?.fontSize, () => reconfigureAppearance())
+watch(() => config.value?.editor?.fontFamily, () => reconfigureAppearance())
+watch(() => config.value?.ui?.zoomLevel, () => reconfigureAppearance())
 watch(() => settingStore.config?.ui?.showWebAddr, () => toggleWebAddr())
+
+// bug #2 修复联动：snippet 数量变化 → 失效补全缓存（在 useEditorCompletion 内部 watch）
+
+// 宏回放
 watch(() => editorStore.macroState.isPlaying, (playing) => {
   if (playing) macro.playMacro(editorView.value as any)
 })
@@ -986,24 +1135,21 @@ watch(() => editorStore.macroState.isPlaying, (playing) => {
 // ==================== 生命周期 ====================
 onMounted(() => {
   createEditor()
-  restoreEditorState()
   document.addEventListener('editor-command', handleEditorCommand as EventListener)
-  // 右键菜单命令（来自 ext-context-menu）
-  document.addEventListener('cmd', ((e: CustomEvent) => {
-    if (e.detail) handleEditorCommand(new CustomEvent('cmd', { detail: e.detail }))
-  }) as EventListener)
-  if (editorView.value) {
-    roScroll = new ResizeObserver(() => syncMinimap())
-    roScroll.observe(editorView.value.scrollDOM)
-  }
 })
+
 onBeforeUnmount(() => {
   saveEditorState()
-  destroyEditor()
+  if (editorView.value) { editorView.value.destroy(); editorView.value = null }
   document.removeEventListener('editor-command', handleEditorCommand as EventListener)
-  roScroll?.disconnect()
-  if (posTimer) window.clearTimeout(posTimer)
+  if (posTimer) clearTimeout(posTimer)
 })
+
+// ==================== 右键菜单 dispatch ====================
+function handleContextMenuDispatch(cmd: string) {
+  const dispatcher = contextMenu.run((c) => handleEditorCommand(new CustomEvent('editor-command', { detail: { cmd: c } })))
+  return dispatcher(cmd)
+}
 
 // ==================== 暴露给父组件 ====================
 defineExpose({
@@ -1032,10 +1178,10 @@ defineExpose({
       <button class="px-2 py-0.5 text-xs rounded text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-600 dark:text-gray-400" @click="markdown.exportMdHtml(props.tab)">导出 HTML</button>
     </div>
 
-    <div class="flex-1 flex overflow-hidden" style="position:relative;" @contextmenu="contextMenu.open($event as any, editorView)" @click="contextMenu.close()">
+    <div class="flex-1 flex overflow-hidden" style="position:relative;" @contextmenu="contextMenu.open($event, editorView)" @click="contextMenu.close()">
       <div ref="editorContainer" :class="{'w-full':!markdown.isMarkdown.value||markdown.mdMode.value==='edit','cm-container-split border-r border-gray-200 dark:border-gray-700':markdown.isMarkdown.value&&markdown.mdMode.value==='split','hidden':markdown.isMarkdown.value&&markdown.mdMode.value==='preview','with-minimap':showMinimap}" class="cm-container" @dblclick="highlightWordAtCursor"></div>
 
-      <!-- 右键菜单（来自 ext-context-menu 数据） -->
+      <!-- 右键菜单（数据驱动：ext-context-menu） -->
       <Teleport to="body">
         <div v-if="contextMenu.visible.value"
           class="fixed z-[9999] bg-white dark:bg-[#2d2d2d] rounded-lg shadow-2xl border border-gray-200 dark:border-gray-600 py-1 min-w-[200px] context-menu-panel"
@@ -1083,7 +1229,7 @@ defineExpose({
 </template>
 
 <style scoped>
-/* ---- 右键菜单样式 ---- */
+/* ---- 右键菜单样式（token 化） ---- */
 .context-menu-panel {
   max-height: calc(100vh - 8px);
   overflow-y: auto;
@@ -1095,29 +1241,30 @@ defineExpose({
   justify-content: space-between;
   width: 100%;
   padding: 6px 16px;
-  font-size: 13px;
-  color: #333;
+  font-size: var(--et-text-md, 13px);
+  color: var(--et-fg, #1f2328);
   background: transparent;
   border: none;
   cursor: pointer;
   text-align: left;
   transition: background 0.1s;
 }
-.context-menu-item:hover:not(:disabled) { background: #e8e8e8; }
-.context-menu-item:disabled { color: #ccc; cursor: not-allowed; }
+.context-menu-item:hover:not(:disabled) {
+  background: var(--et-bg-hover, #e8e8e8);
+}
+.context-menu-item:disabled {
+  color: var(--et-fg-subtle, #ccc);
+  cursor: not-allowed;
+}
 .context-menu-item .item-label { flex: 1; }
 .context-menu-item .item-shortcut {
-  font-size: 11px;
-  color: #999;
+  font-size: var(--et-text-xs, 11px);
+  color: var(--et-fg-subtle, #999);
   margin-left: 20px;
 }
 .context-menu-separator {
   height: 1px;
   margin: 4px 0;
-  background-color: #e5e5e5;
+  background-color: var(--et-border, #e5e5e5);
 }
-html.dark .context-menu-item { color: #e0e0e0; }
-html.dark .context-menu-item:hover:not(:disabled) { background: #3a3a3a; }
-html.dark .context-menu-item:disabled { color: #555; }
-html.dark .context-menu-separator { background-color: #3a3a3a; }
 </style>

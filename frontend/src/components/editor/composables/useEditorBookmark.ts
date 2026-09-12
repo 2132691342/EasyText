@@ -41,7 +41,7 @@ export function useEditorBookmark(): UseEditorBookmark {
   async function syncFromDB(tab: EditorTab) {
     if (!tab.path) return
     try {
-      const entries = await GetBookmarks(tab.path)
+      const entries: any[] = await GetBookmarks(tab.path)
       if (!Array.isArray(entries)) return
       // 清空该 tab 旧书签（in-memory map），然后写入后端真实数据
       editorStore.clearBookmarks(tab.id)
@@ -104,7 +104,7 @@ export function useEditorBookmark(): UseEditorBookmark {
     if (!tab) return
     const bookmarks = editorStore.getBookmarks(tab.id)
     if (tab.path) {
-      GetBookmarks(tab.path).then((entries) => {
+      GetBookmarks(tab.path).then((entries: any) => {
         if (entries) {
           (entries as any[]).forEach((b: any) => {
             RemoveBookmark(b.id).catch(() => {})

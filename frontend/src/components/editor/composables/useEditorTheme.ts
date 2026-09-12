@@ -11,8 +11,8 @@
  * useEditorTheme 不持有任何可变状态——它只产出 CodeMirror extension。
  */
 import { computed, type ComputedRef } from 'vue'
-import type { Extension } from '@codemirror/view'
 import { EditorView } from '@codemirror/view'
+import type { Extension } from '@codemirror/state'
 import { syntaxHighlighting, HighlightStyle, foldGutter } from '@codemirror/language'
 import { tags } from '@lezer/highlight'
 

@@ -42,8 +42,7 @@
     "mermaid": "^10.9.0",
     "pinia": "^2.1.7",
     "tailwind-merge": "^2.2.1",
-    "vue": "^3.4.21",
-    "xml-formatter": "^3.7.0"
+    "vue": "^3.4.21"
   },
   "devDependencies": {
     "@babel/types": "^7.24.0",

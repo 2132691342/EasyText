@@ -8,7 +8,8 @@
  * 注意：标点键（PunctuationKeymap）已被显式移除——原注释明确说过 CodeMirror 6
  * 已正确处理标点符号，旧实现拦截会与中文 IME 冲突。
  */
-import { keymap, type Extension } from '@codemirror/view'
+import { keymap } from '@codemirror/view'
+import type { Extension } from '@codemirror/state'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete'
 import { foldKeymap } from '@codemirror/language'

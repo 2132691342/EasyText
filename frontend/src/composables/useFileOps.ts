@@ -225,7 +225,7 @@ export function useFileOps(opts: UseFileOpsOptions) {
         // 并行读取所有会话文件，大幅减少启动恢复时间
         const results = await Promise.allSettled(
           s.files.map((f: { path: string; encoding: string }) =>
-            ReadFile(f.path).then(r => ({ file: f, result: r })),
+            ReadFile(f.path).then((r: any) => ({ file: f, result: r })),
           ),
         )
         // 把恢复成功的文件路径汇总，最后统一 AddRecentEntry，避免顺序竞态
