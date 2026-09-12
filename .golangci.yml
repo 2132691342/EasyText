@@ -1,0 +1,37 @@
+# golangci-lint 本地静态检查配置
+#
+# 运行：golangci-lint run ./...
+# 说明：CI 硬门禁为 go vet + go test（见 .github/workflows/ci.yml）；
+# 本配置供本地深度检查用，启用项以「低噪音、可落地」为准。
+
+run:
+  timeout: 5m
+
+linters:
+  disable-all: true
+  enable:
+    - govet        # 与 CI 的 go vet 一致
+    - staticcheck  # 常见错误与过时 API
+    - errcheck     # 未检查的 error 返回值
+    - ineffassign  # 无效赋值
+    - unused       # 未使用的变量/函数
+
+linters-settings:
+  errcheck:
+    # 服务层大量 "best effort" 调用（clipboard、UI 回调）由调用方兜底，
+    # 排除这些常见噪音函数；如需严格模式可注释掉 exclude-functions。
+    exclude-functions:
+      - (io.Closer).Close
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  exclude-rules:
+    # 测试文件允许宽松：t.TempDir 清理失败、best-effort 断言等
+    - path: _test\.go
+      linters:
+        - errcheck
+    # GORM 模型与 Wails 绑定模型的结构体字段由序列化框架消费
+    - path: config/database\.go
+      linters:
+        - unused

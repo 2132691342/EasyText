@@ -128,21 +128,21 @@ EasyText/
 │   ├── .eslintrc.cjs             # 前端 ESLint（no-explicit-any + no-empty）
 │   └── src/
 │       ├── components/           # Vue 组件
-│       │   ├── MainLayout.vue    # 顶层布局（807 行，已拆 composables）
-│       │   ├── editor/CodeEditor.vue   # CodeMirror 6 封装
-│       │   ├── viewer/           # HexViewer / ImageViewer / ImageEditor / LogViewer
-│       │   └── ...               # FindWin / DiffView / FormatConverter 等浮层
-│       ├── composables/          # 业务逻辑抽离
-│       │   ├── useCommands.ts    # 命令分发（150+ 命令）
-│       │   ├── useFileOps.ts     # 文件 I/O + 会话 + 工作空间
-│       │   └── useTailWatcher.ts # tail -f 监听（修复 EventsOn 泄漏）
-│       ├── stores/               # Pinia 状态
-│       │   ├── editorStore.ts    # 标签 / 书签 / 位置历史 / 宏
-│       │   ├── fileStore.ts      # 当前目录 / 文件树
-│       │   ├── settingStore.ts   # 配置 + 防抖持久化
-│       │   └── converterTabStore.ts  # FormatConverter 内部 tab 路由
+│       │   ├── MainLayout.vue    # 顶层装配 + 全局事件接线
+│       │   ├── ModalOverlay.vue  # 所有浮窗的统一容器（size / focus-trap / Esc）
+│       │   ├── NddMenuBar.vue    # 菜单栏（28px，键盘可达）
+│       │   ├── NddToolbar.vue    # 工具栏（30px，Sublime 风即时 Popover）
+│       │   ├── TabBar.vue        # 标签栏（30px，统一脏标记圆点）
+│       │   ├── StatusBar.vue     # 状态栏（24px，修改指示）
+│       │   ├── editor/CodeEditor.vue   # 编辑器容器（createEditor / dispatch）
+│       │   ├── editor/composables/     # 主题 / 语言 / 补全 / 书签 / 列编辑 / 宏 / MD
+│       │   ├── editor/ext/             # keymap 装配 + 右键菜单数据
+│       │   └── viewer/           # HexViewer / ImageViewer / ImageEditor / LogViewer
+│       ├── composables/          # useCommands（150+ 命令）/ useFileOps / useTailWatcher
+│       ├── stores/               # Pinia：editor / file / setting / converterTab
 │       ├── types/index.ts        # 全局 TypeScript 类型
-│       └── utils/index.ts        # 工具函数
+│       └── style.css             # 设计令牌 --et-*（v2.1：间距/字号/高度阶梯/语义色）
+├── docs/bug-repro/               # 各里程碑 bug 复现与验收剧本
 ├── .github/workflows/ci.yml      # GitHub Actions（backend + frontend 双 pipeline）
 └── build/                        # 构建产物
 ```
@@ -184,12 +184,12 @@ pure utility        ←  backend/utils/errors.go（AppError + WrapError）
 
 ## 测试
 
-**52 个测试用例**（51 通过 + 1 个 Windows 专属 skip），覆盖 11 个包：
+**84 个测试用例**，覆盖 11 个包：
 
 | 包 | 覆盖 |
 |---|---|
 | `utils` | AppError 错误链 `Unwrap()` / `WrapError` 包装 |
-| `tools` | gopher-lua 执行/超时/并发、findreplace 查找/替换、recent 去重与限制 |
+| `tools` | gopher-lua 执行/超时/并发、findreplace 查找/替换、recent 去重与限制、draft 草稿 CRUD/冲突检测、bookmark 去重/更新/删除、snippet CRUD/VS Code 导入导出、encoding GBK 往返/BOM 全变体（曾抓出 RemoveBOM 缺 UTF-32BE 分支的真 bug）、JSON 格式化/JSONPath/结构体生成/结构化 Diff、宏录制/回放/持久化 |
 | `file` | 文件分片读取边界 |
 | `config` | 配置合并 / 默认值 / v2→v3 迁移 |
 | `api` | Handler 启动 fail-fast 不变量 |
@@ -198,10 +198,10 @@ pure utility        ←  backend/utils/errors.go（AppError + WrapError）
 | `internal/concurrency` | 并发执行器边界 |
 
 ```bash
-cd backend && go test ./... -count=1 -timeout 60s
+cd backend && go test ./... -count=1 -timeout 120s
 ```
 
-修复 bug 时**必须先写复现测试**。
+修复 bug 时**必须先写复现测试**。各里程碑的回归剧本见 `docs/bug-repro/`。
 
 ## 文档
 

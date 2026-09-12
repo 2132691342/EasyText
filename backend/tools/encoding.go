@@ -237,6 +237,13 @@ func (et *EncodingTool) RemoveBOM(content []byte) []byte {
 			}
 			return content[2:]
 		}
+	}
+	// UTF-32BE BOM (00 00 FE FF)：开头是 00 00，必须先于 FE/FF 前缀判定；
+	// 原实现缺少该分支，导致 AddBOM(UTF-32BE) 后无法剥回（往返测试发现）。
+	if len(content) >= 4 {
+		if content[0] == 0x00 && content[1] == 0x00 && content[2] == 0xFE && content[3] == 0xFF {
+			return content[4:]
+		}
 		if content[0] == 0xFE && content[1] == 0xFF {
 			return content[2:]
 		}
