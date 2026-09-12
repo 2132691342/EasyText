@@ -3,6 +3,7 @@ import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { CompareDiffLines, CompareCharacters, OpenFileDialog, ReadFile, SaveFile, SaveFileDialog } from '../../wailsjs/go/main/App'
 import { X, ChevronLeft, ChevronRight, FolderOpen, Columns, Rows, Download, Highlighter } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
+import ModalOverlay from './ModalOverlay.vue'
 
 const props = defineProps<{
   visible: boolean

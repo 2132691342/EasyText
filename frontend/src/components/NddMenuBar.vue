@@ -404,7 +404,7 @@ const openItems = computed(() => {
     <div
       v-for="(m, idx) in MENUS"
       :key="m.label"
-      class="mb-wrap"
+      class="mb-top-item"
     >
       <button
         class="mb-top"
@@ -487,6 +487,17 @@ const openItems = computed(() => {
 </template>
 
 <style scoped>
+/* 顶层菜单项 wrapper：必须 position:relative，
+   否则 .mb-menu 的 absolute(top:100%) 会相对视口定位，
+   下拉面板渲染到屏幕外——表现为"点击菜单毫无反应"（M5 用户实测） */
+.mb-top-item {
+  position: relative;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
 .mb-top {
   height: 100%;
   padding: 0 10px;
