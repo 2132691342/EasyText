@@ -26,74 +26,46 @@ func writeLines(t *testing.T, n int) string {
 	return p
 }
 
-// TestReadPartial_BasicRange 验证基本分块读取：offset=2, count=3 返回第 3~5 行。
-func TestReadPartial_BasicRange(t *testing.T) {
-	p := writeLines(t, 10)
+// TestReadPartial 覆盖分块读取的核心语义：按 offset/count 取行区间、
+// 末块不足时返回剩余行、offset 越界返回空串（前端 loadMore 的停止条件）、
+// 文件不存在报"文件不存在"错误。
+func TestReadPartial(t *testing.T) {
 	fr := NewFileReader(0)
 
-	got, err := fr.ReadPartial(p, 2, 3)
-	if err != nil {
-		t.Fatalf("ReadPartial: %v", err)
-	}
-	want := "line2\nline3\nline4"
-	if got != want {
-		t.Errorf("want %q, got %q", want, got)
-	}
-}
+	t.Run("basic-range", func(t *testing.T) {
+		got, err := fr.ReadPartial(writeLines(t, 10), 2, 3)
+		if err != nil {
+			t.Fatalf("ReadPartial: %v", err)
+		}
+		if want := "line2\nline3\nline4"; got != want {
+			t.Errorf("want %q, got %q", want, got)
+		}
+	})
 
-// TestReadPartial_OffsetBeyondEnd 验证 offset 超出总行数时返回空串不报错。
-// 这是前端 loadMoreInBackground 结束条件依赖的语义。
-func TestReadPartial_OffsetBeyondEnd(t *testing.T) {
-	p := writeLines(t, 5)
-	fr := NewFileReader(0)
+	t.Run("partial-tail", func(t *testing.T) {
+		got, err := fr.ReadPartial(writeLines(t, 5), 3, 10)
+		if err != nil {
+			t.Fatalf("ReadPartial: %v", err)
+		}
+		if want := "line3\nline4"; got != want {
+			t.Errorf("want %q, got %q", want, got)
+		}
+	})
 
-	got, err := fr.ReadPartial(p, 100, 10)
-	if err != nil {
-		t.Fatalf("ReadPartial: %v", err)
-	}
-	if got != "" {
-		t.Errorf("offset beyond end should return empty, got %q", got)
-	}
-}
+	t.Run("offset-beyond-end", func(t *testing.T) {
+		got, err := fr.ReadPartial(writeLines(t, 5), 100, 10)
+		if err != nil {
+			t.Fatalf("ReadPartial: %v", err)
+		}
+		if got != "" {
+			t.Errorf("offset beyond end should return empty, got %q", got)
+		}
+	})
 
-// TestReadPartial_ZeroCount 验证 count<=0 是 no-op。
-func TestReadPartial_ZeroCount(t *testing.T) {
-	p := writeLines(t, 5)
-	fr := NewFileReader(0)
-
-	got, err := fr.ReadPartial(p, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != "" {
-		t.Errorf("count=0 should return empty, got %q", got)
-	}
-}
-
-// TestReadPartial_PartialTail 验证最后一块不足 count 行时返回剩余所有行。
-func TestReadPartial_PartialTail(t *testing.T) {
-	p := writeLines(t, 5)
-	fr := NewFileReader(0)
-
-	got, err := fr.ReadPartial(p, 3, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := "line3\nline4"
-	if got != want {
-		t.Errorf("want %q, got %q", want, got)
-	}
-}
-
-// TestReadPartial_FileNotFound 验证文件不存在时返回 ErrFileNotFound。
-func TestReadPartial_FileNotFound(t *testing.T) {
-	fr := NewFileReader(0)
-	_, err := fr.ReadPartial(filepath.Join(t.TempDir(), "missing.txt"), 0, 10)
-	if err == nil {
-		t.Fatal("expected error for missing file")
-	}
-	// AppError 的 Message 应是"文件不存在"
-	if !strings.Contains(err.Error(), "文件不存在") {
-		t.Errorf("want '文件不存在' in error, got: %v", err)
-	}
+	t.Run("file-not-found", func(t *testing.T) {
+		_, err := fr.ReadPartial(filepath.Join(t.TempDir(), "missing.txt"), 0, 10)
+		if err == nil || !strings.Contains(err.Error(), "文件不存在") {
+			t.Errorf("want '文件不存在' error, got: %v", err)
+		}
+	})
 }

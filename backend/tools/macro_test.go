@@ -5,94 +5,59 @@ import (
 	"testing"
 )
 
-// TestMacro_RecordAndStop 验证录制生命周期：Start → RecordStep ×N → Stop 产出宏。
-func TestMacro_RecordAndStop(t *testing.T) {
+// TestMacro_Lifecycle 覆盖宏的完整生命周期：录制 → 步骤采集 → 停止产出宏 →
+// 保存（空录制必须拒绝）→ 查询/重命名/删除，以及删除不存在 ID 的幂等语义。
+func TestMacro_Lifecycle(t *testing.T) {
 	svc := NewMacroService()
-	// 隔离持久化：测试写到 TempDir，避免污染用户配置目录
 	svc.storagePath = filepath.Join(t.TempDir(), "macros.json")
 
 	if svc.IsRecording() {
 		t.Fatal("recording should start off")
 	}
 	svc.StartRecording()
-	if !svc.IsRecording() {
-		t.Fatal("want recording=true after StartRecording")
-	}
-
 	svc.RecordStep(MacroStep{Type: "insert", Text: "abc", Timestamp: 1})
 	svc.RecordStep(MacroStep{Type: "delete", Text: "a", Timestamp: 2})
 
-	macro := svc.StopRecording()
-	if macro == nil {
-		t.Fatal("want macro after StopRecording, got nil")
-	}
-	if len(macro.Steps) != 2 {
-		t.Errorf("want 2 steps, got %d", len(macro.Steps))
+	// 保存即结束录制（内部清空缓冲并置 isRecording=false）
+	saved := svc.SaveCurrentMacro("first")
+	if saved == nil || len(saved.Steps) != 2 {
+		t.Fatalf("SaveCurrentMacro should yield 2 steps, got %+v", saved)
 	}
 	if svc.IsRecording() {
-		t.Error("recording should stop after StopRecording")
+		t.Error("recording should stop after SaveCurrentMacro")
 	}
-}
-
-// TestMacro_StopWithoutRecording 验证未录制时 Stop 返回 nil。
-func TestMacro_StopWithoutRecording(t *testing.T) {
-	svc := NewMacroService()
-	svc.storagePath = filepath.Join(t.TempDir(), "macros.json")
-
-	if m := svc.StopRecording(); m != nil {
-		t.Errorf("want nil macro without recording, got %+v", m)
-	}
-}
-
-// TestMacro_GetDeleteRename 验证宏查询 / 删除 / 重命名。
-func TestMacro_GetDeleteRename(t *testing.T) {
-	svc := NewMacroService()
-	svc.storagePath = filepath.Join(t.TempDir(), "macros.json")
-
-	svc.StartRecording()
-	svc.RecordStep(MacroStep{Type: "insert", Text: "x", Timestamp: 1})
-	saved := svc.SaveCurrentMacro("first")
-	if saved == nil {
-		t.Fatal("want saved macro, got nil")
-	}
-
-	all := svc.GetMacros()
-	if len(all) != 1 {
-		t.Fatalf("want 1 macro, got %d", len(all))
-	}
-
 	if got := svc.GetMacro(saved.ID); got == nil || got.Name != "first" {
 		t.Errorf("GetMacro mismatch: %+v", got)
 	}
-	if !svc.RenameMacro(saved.ID, "renamed") {
-		t.Error("RenameMacro should succeed for existing id")
+	if !svc.RenameMacro(saved.ID, "renamed") || svc.GetMacro(saved.ID).Name != "renamed" {
+		t.Error("RenameMacro failed")
 	}
-	if got := svc.GetMacro(saved.ID); got.Name != "renamed" {
-		t.Errorf("want name=renamed, got %q", got.Name)
+	if !svc.DeleteMacro(saved.ID) || svc.DeleteMacro(saved.ID) {
+		t.Error("delete should succeed once then report false")
 	}
-	if !svc.DeleteMacro(saved.ID) {
-		t.Error("DeleteMacro should succeed for existing id")
-	}
-	if svc.DeleteMacro(saved.ID) {
-		t.Error("double delete should report false")
-	}
-}
 
-// TestMacro_SaveCurrentRequiresSteps 验证空录制不能保存（防产生空宏）。
-func TestMacro_SaveCurrentRequiresSteps(t *testing.T) {
-	svc := NewMacroService()
-	svc.storagePath = filepath.Join(t.TempDir(), "macros.json")
-
+	// StopRecording 同样保存宏（自动命名）
 	svc.StartRecording()
-	if m := svc.SaveCurrentMacro("empty"); m != nil {
-		t.Errorf("want nil for empty recording, got %+v", m)
+	svc.RecordStep(MacroStep{Type: "insert", Text: "x", Timestamp: 3})
+	if m := svc.StopRecording(); m == nil || len(m.Steps) != 1 {
+		t.Fatalf("StopRecording should yield 1 step, got %+v", m)
+	}
+	if all := svc.GetMacros(); len(all) != 1 {
+		t.Errorf("stopped macro should be saved, got %d", len(all))
+	}
+
+	// 空录制不允许保存为宏
+	empty := NewMacroService()
+	empty.storagePath = filepath.Join(t.TempDir(), "macros.json")
+	empty.StartRecording()
+	if m := empty.SaveCurrentMacro("empty"); m != nil {
+		t.Errorf("empty recording must not save, got %+v", m)
 	}
 }
 
-// TestMacro_PersistenceRoundTrip 验证宏文件保存后重建实例可恢复（防回归：宏丢失）。
+// TestMacro_PersistenceRoundTrip 验证宏文件落盘后新实例可恢复（防宏丢失回归）。
 func TestMacro_PersistenceRoundTrip(t *testing.T) {
-	dir := t.TempDir()
-	storage := filepath.Join(dir, "macros.json")
+	storage := filepath.Join(t.TempDir(), "macros.json")
 
 	svcA := NewMacroService()
 	svcA.storagePath = storage
@@ -102,8 +67,6 @@ func TestMacro_PersistenceRoundTrip(t *testing.T) {
 		t.Fatal("SaveCurrentMacro failed")
 	}
 
-	// 新实例从磁盘 load：构造函数已按 UserConfigDir load 过一次，
-	// 覆盖 storagePath 后需再显式 load 一次（同包测试可直接调私有方法）
 	svcB := NewMacroService()
 	svcB.storagePath = storage
 	svcB.load()

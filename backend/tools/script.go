@@ -282,7 +282,8 @@ func (s *ScriptService) Execute(id string, ctx ScriptContext) (*ScriptResult, er
 // luaTimeout 单个脚本执行的最长运行时间。
 // 超出后不再强制中断（gopher-lua 不支持协作式取消），
 // 但保证 goroutine 与 Lua VM 生命周期一致：Close 由执行 goroutine 独占负责。
-const luaTimeout = 5 * time.Second
+// 为 var 以便测试缩短等待（正常值固定 5s）。
+var luaTimeout = 5 * time.Second
 
 // executeLua 通过 gopher-lua 执行 Lua 脚本。
 //

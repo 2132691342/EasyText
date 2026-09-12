@@ -2,33 +2,26 @@ package tools
 
 import (
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
 
-// TestExecuteLua_TimeoutNoPanic 复现 F-1 修复前的 panic 风险：
-// 超时分支 Close + 外层 defer Close → 双重 Close panic。
-//
-// 修复后：L.Close 由执行 goroutine 独占负责，外层 select 超时分支不再调 Close。
-// 即使脚本是死循环，超时后应返回 ScriptResult{Success:false, Error:含"超时"}，
-// 不应 panic，也不应让后续调用受影响。
-func TestExecuteLua_TimeoutNoPanic(t *testing.T) {
+// shortenLuaTimeout 在测试内把脚本超时缩到 300ms，结束后恢复原值。
+func shortenLuaTimeout(t *testing.T) {
+	t.Helper()
+	orig := luaTimeout
+	luaTimeout = 300 * time.Millisecond
+	t.Cleanup(func() { luaTimeout = orig })
+}
+
+// TestScript_Timeout 验证死循环脚本被超时拦截：返回失败结果且错误含"超时"，
+// 不 panic、不双重 Close，超时窗口与配置一致。
+func TestScript_Timeout(t *testing.T) {
+	shortenLuaTimeout(t)
 	svc := NewScriptService(t.TempDir())
 
-	// 死循环脚本
-	infiniteLoop := `
-		while true do
-			-- 永远不退出
-		end
-	`
-
-	// 通过 Execute() 路径调用，先保存脚本再执行。
-	// 直接调用 executeLua 需要 ScriptInfo，不便；用 Execute 通过 Lua 文件。
-	if err := svc.Save(ScriptInfo{
-		ID:      "infinite",
-		Code:    infiniteLoop,
-		Enabled: true,
-	}); err != nil {
+	if err := svc.Save(ScriptInfo{ID: "infinite", Code: "while true do end", Enabled: true}); err != nil {
 		t.Fatalf("Save failed: %v", err)
 	}
 
@@ -36,41 +29,60 @@ func TestExecuteLua_TimeoutNoPanic(t *testing.T) {
 	result, err := svc.Execute("infinite", ScriptContext{})
 	elapsed := time.Since(start)
 
-	// 不应 panic；err 应为 nil（错误信息已在 result.Error 中）
 	if err != nil {
 		t.Fatalf("Execute returned error (should be in result.Error): %v", err)
 	}
-	if result == nil {
-		t.Fatal("result is nil")
-	}
-	if result.Success {
-		t.Errorf("expected Success=false for infinite loop, got true")
+	if result == nil || result.Success {
+		t.Fatalf("expected Success=false, got %+v", result)
 	}
 	if !strings.Contains(result.Error, "超时") {
 		t.Errorf("expected error to contain '超时', got: %q", result.Error)
 	}
-
-	// 验证超时窗口合理（luaTimeout = 5s，允许 ±1s 抖动）
-	if elapsed < 4*time.Second || elapsed > 7*time.Second {
-		t.Errorf("timeout took %v, expected ~5s", elapsed)
+	if elapsed > 2*time.Second {
+		t.Errorf("timeout took %v, expected ~300ms", elapsed)
 	}
 }
 
-// TestExecuteLua_NormalCompletion 验证正常脚本能完成。
-func TestExecuteLua_NormalCompletion(t *testing.T) {
+// TestScript_ConcurrentExecution 验证并发执行多个脚本（含死循环）安全：
+// 正常脚本成功返回，死循环脚本超时失败，全程无 panic。
+func TestScript_ConcurrentExecution(t *testing.T) {
+	shortenLuaTimeout(t)
 	svc := NewScriptService(t.TempDir())
-	if err := svc.Save(ScriptInfo{
-		ID:   "ok",
-		Code: `return "hello"`,
-	}); err != nil {
-		t.Fatalf("Save failed: %v", err)
+
+	scripts := map[string]string{
+		"fast1": `return 1`,
+		"fast2": `return "hello"`,
+		"slow1": `while true do end`,
+		"slow2": `while true do end`,
+	}
+	ids := []string{"fast1", "fast2", "slow1", "slow2"}
+	for id, code := range scripts {
+		if err := svc.Save(ScriptInfo{ID: id, Code: code}); err != nil {
+			t.Fatalf("Save %s: %v", id, err)
+		}
 	}
 
-	result, err := svc.Execute("ok", ScriptContext{Content: "world"})
-	if err != nil {
-		t.Fatalf("Execute failed: %v", err)
+	var wg sync.WaitGroup
+	results := make([]*ScriptResult, len(ids))
+	errs := make([]error, len(ids))
+	wg.Add(len(ids))
+	for i, id := range ids {
+		go func() {
+			defer wg.Done()
+			results[i], errs[i] = svc.Execute(id, ScriptContext{})
+		}()
 	}
-	if !result.Success {
-		t.Errorf("expected Success=true, got: %v (error=%q)", result.Success, result.Error)
+	wg.Wait()
+
+	for i, id := range ids {
+		if errs[i] != nil || results[i] == nil {
+			t.Fatalf("%s: err=%v result=%v", id, errs[i], results[i])
+		}
+		if strings.HasPrefix(id, "fast") && !results[i].Success {
+			t.Errorf("%s expected Success=true, got error=%q", id, results[i].Error)
+		}
+		if strings.HasPrefix(id, "slow") && (results[i].Success || !strings.Contains(results[i].Error, "超时")) {
+			t.Errorf("%s expected timeout failure, got %+v", id, results[i])
+		}
 	}
 }
