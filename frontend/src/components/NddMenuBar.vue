@@ -277,15 +277,29 @@ function onHover(idx: number) {
 function openSub(id: string, ev?: MouseEvent) {
   subId.value = id
   if (id === 'recent') refreshRecent()
-  if (id === 'recent' && ev) {
-    nextTick(() => positionSubRight(ev.currentTarget as HTMLElement))
-  }
+  if (ev) positionSub(ev.currentTarget as HTMLElement)
 }
 
-const subFlip = ref(false)
-function positionSubRight(anchor: HTMLElement) {
+// 子菜单坐标：以悬停项为锚点，右侧弹出；贴近右缘时左翻，越出屏底时上收。
+// 面板 Teleport 到 body（fixed 定位），不能作为 .mb-menu 的子元素——
+// 父菜单是滚动容器（overflow-y:auto），子元素会被卷进横向滚动区。
+const subPos = ref({ x: 0, y: 0 })
+const SUB_WIDTH = 220
+function positionSub(anchor: HTMLElement) {
   const r = anchor.getBoundingClientRect()
-  subFlip.value = (window.innerWidth - (r.right + 220)) < 0
+  let x = r.right + 4
+  if (x + SUB_WIDTH > window.innerWidth - 8) {
+    x = Math.max(8, r.left - SUB_WIDTH - 4)
+  }
+  subPos.value = { x, y: Math.max(8, r.top - 5) }
+  nextTick(() => {
+    const el = document.querySelector('.mb-sub') as HTMLElement | null
+    if (!el) return
+    const h = el.offsetHeight
+    if (subPos.value.y + h > window.innerHeight - 8) {
+      subPos.value = { x: subPos.value.x, y: Math.max(8, window.innerHeight - 8 - h) }
+    }
+  })
 }
 function close() {
   openIdx.value = null
@@ -320,6 +334,14 @@ function pickIconSize(v: number) { emit('cmd', 'iconsize-' + v); close() }
 function pickTheme(name: string) { emit('cmd', 'theme-style', name); close() }
 function pickLang(name: string) { emit('cmd', 'set-lang', name); close() }
 function pickUiLang(name: string) { emit('cmd', name === 'zh' ? 'lang-zh' : 'lang-en'); close() }
+
+function pickSub(id: string, sub: Item) {
+  if (id === 'zoom') return pickZoom(sub.cmd === 'zoom-in' ? 110 : sub.cmd === 'zoom-out' ? 90 : 100)
+  if (id === 'iconsize') return pickIconSize(parseInt((sub.cmd || '').split('-')[1] || '18', 10))
+  if (id === 'theme') return pickTheme(sub.label || '')
+  if (id === 'uilang') return pickUiLang((sub.cmd || '').endsWith('zh') ? 'zh' : 'en')
+  clickItem(sub)
+}
 
 // ---- 键盘 ----
 function onMenuKey(e: KeyboardEvent) {
@@ -450,35 +472,32 @@ const openItems = computed(() => {
               </span>
               <span v-else-if="it.key" class="mb-item-key">{{ it.key }}</span>
             </button>
-
-            <!-- 子菜单：浮动定位 -->
-            <div
-              v-if="it.sub && subId === it.sub"
-              class="mb-sub"
-              :class="{ 'mb-sub-flip': subFlip }"
-              :data-sub="it.sub"
-            >
-              <button
-                v-for="(sub, k) in itemsForSub(it.sub)"
-                :key="k"
-                class="mb-item"
-                @click="
-                  it.sub === 'zoom' ? pickZoom(sub.cmd === 'zoom-in' ? 110 : sub.cmd === 'zoom-out' ? 90 : 100) :
-                  it.sub === 'iconsize' ? pickIconSize(parseInt((sub.cmd || '').split('-')[1] || '18', 10)) :
-                  it.sub === 'theme' ? pickTheme(sub.label || '') :
-                  it.sub === 'uilang' ? pickUiLang((sub.cmd || '').endsWith('zh') ? 'zh' : 'en') :
-                  clickItem(sub)
-                "
-              >
-                <span class="mb-item-chk" />
-                <span class="mb-item-label">{{ sub.label }}</span>
-                <span v-if="sub.key" class="mb-item-key">{{ sub.key }}</span>
-              </button>
-            </div>
           </template>
         </template>
       </div>
     </div>
+
+    <!-- 子菜单：Teleport 到 body，按悬停项坐标右侧弹出。
+         不能作为 .mb-menu 的子元素——父菜单是滚动容器，子菜单会被卷进横向滚动区 -->
+    <Teleport to="body">
+      <div
+        v-if="openIdx !== null && subId"
+        class="mb-sub"
+        :style="{ left: subPos.x + 'px', top: subPos.y + 'px' }"
+        :data-sub="subId"
+      >
+        <button
+          v-for="(sub, k) in itemsForSub(subId)"
+          :key="k"
+          class="mb-item"
+          @click="pickSub(subId, sub)"
+        >
+          <span class="mb-item-chk" />
+          <span class="mb-item-label">{{ sub.label }}</span>
+          <span v-if="sub.key" class="mb-item-key">{{ sub.key }}</span>
+        </button>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -525,6 +544,7 @@ const openItems = computed(() => {
   min-width: 240px;
   max-height: calc(100vh - var(--et-h-menu) - 8px);
   overflow-y: auto;
+  overflow-x: hidden;
   overscroll-behavior: contain;
   padding: var(--et-space-1);
   background: var(--et-bg-elevated);
@@ -576,6 +596,7 @@ const openItems = computed(() => {
 }
 .mb-item-label {
   flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -597,14 +618,13 @@ const openItems = computed(() => {
   background-color: var(--et-border);
 }
 
-/* —— 子菜单（嵌套弹层） —— */
+/* —— 子菜单：Teleport 到 body，fixed 定位，坐标由 positionSub 计算 —— */
 .mb-sub {
-  position: absolute;
-  left: calc(100% + var(--et-space-1));
-  top: -5px;
-  z-index: 1100;
+  position: fixed;
+  z-index: 1200;
   min-width: 200px;
-  max-height: calc(100vh - var(--et-h-menu) - 8px);
+  max-width: min(60vw, 480px);
+  max-height: calc(100vh - var(--et-h-menu) - 16px);
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: var(--et-space-1);
@@ -613,10 +633,6 @@ const openItems = computed(() => {
   border-radius: var(--et-radius);
   box-shadow: var(--et-shadow-md);
   animation: mb-menu-in 80ms ease-out;
-}
-.mb-sub-flip {
-  left: auto;
-  right: calc(100% + var(--et-space-1));
 }
 
 /* —— 语言菜单分组 —— */
