@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>EasyText Markdown 渲染 harness</title>
+</head>
+<body style="font:13px/1.6 system-ui,'Microsoft YaHei',sans-serif;padding:16px;max-width:1100px;margin:0 auto">
+  <h1>Markdown 渲染 harness（真实 useEditorMarkdown）</h1>
+  <h2>探针</h2>
+  <div id="probes" style="font-family:Consolas,monospace;white-space:pre-wrap;border:1px solid #ddd;padding:12px;background:#fafafa"></div>
+  <h2>大文档渲染成本基准</h2>
+  <div id="bench" style="font-family:Consolas,monospace;white-space:pre-wrap;border:1px solid #ddd;padding:12px;background:#f5faff"></div>
+  <h2>渲染结果（fixture）</h2>
+  <div id="out" class="markdown-body" style="border:1px solid #ccc;padding:12px;overflow:auto"></div>
+  <h2>渲染结果（真实文档 / 公式 / 样式检查挂载点）</h2>
+  <div id="mount" style="border:1px solid #ccc;padding:12px;max-height:600px;overflow:auto"></div>
+  <script type="module" src="./harness.ts"></script>
+</body>
+</html>

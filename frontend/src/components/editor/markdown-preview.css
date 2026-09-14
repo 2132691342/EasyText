@@ -1,0 +1,99 @@
+/**
+ * Markdown 预览样式
+ *
+ * 排版骨架来自 github-markdown-css（在 useEditorMarkdown.ts 里先 import），
+ * 这里做两件事：
+ *  1. 把它的字面色换成 --et-* 令牌 —— 深浅色随主题自动切换，且不新增字面色值；
+ *     预览容器自己已有背景，.markdown-body 背景设为透明。
+ *  2. 补齐预览自己生成的代码块标记（code-block-wrapper / code-block-header / code-copy-btn）
+ *     的样式 —— 导入的库里没有这些类，缺了它们代码块头部会退化成一行 "xml复制" 文本。
+ */
+
+.markdown-body {
+  color: var(--et-fg);
+  background-color: transparent;
+  font-size: var(--et-text-base);
+  line-height: var(--et-lh-base);
+}
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  color: var(--et-fg);
+  border-bottom-color: var(--et-border);
+}
+
+.markdown-body a { color: var(--et-accent); }
+
+.markdown-body hr { background-color: var(--et-border); }
+
+.markdown-body blockquote {
+  color: var(--et-fg-muted);
+  border-left-color: var(--et-border);
+}
+
+.markdown-body table tr {
+  background-color: transparent;
+  border-top-color: var(--et-border);
+}
+
+.markdown-body table tr:nth-child(2n) { background-color: var(--et-bg-sunken); }
+
+.markdown-body table th,
+.markdown-body table td { border-color: var(--et-border); }
+
+/* —— 代码块：整体边框 + 头部（语言标签 / 复制按钮） —— */
+.markdown-body .code-block-wrapper {
+  margin: var(--et-space-3) 0;
+  border: 1px solid var(--et-border);
+  border-radius: var(--et-radius);
+  overflow: hidden;
+}
+
+.markdown-body .code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--et-space-2);
+  height: var(--et-h-control-sm);
+  padding: 0 var(--et-space-2);
+  font-size: var(--et-text-xs);
+  color: var(--et-fg-muted);
+  background: var(--et-bg-sunken);
+  border-bottom: 1px solid var(--et-border);
+}
+
+.markdown-body .code-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--et-space-1);
+  padding: 0 var(--et-space-1);
+  border: none;
+  border-radius: var(--et-radius-sm);
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+  cursor: pointer;
+}
+
+.markdown-body .code-copy-btn:hover {
+  color: var(--et-fg);
+  background: var(--et-bg-hover);
+}
+
+.markdown-body .code-copy-btn.copied { color: var(--et-success); }
+
+.markdown-body .code-block-wrapper pre {
+  margin: 0;
+  border-radius: 0;
+}
+
+/* mermaid 图：渲染失败时显示源码，保持等宽可读 */
+.markdown-body .mermaid-chart.mermaid-error pre {
+  margin: 0;
+  background: var(--et-danger-bg);
+  color: var(--et-danger);
+}

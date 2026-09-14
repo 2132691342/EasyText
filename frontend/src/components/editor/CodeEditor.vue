@@ -46,6 +46,7 @@ const colors = computed(() => settingStore.currentThemeColors as any)
 
 // ==================== 实例状态 ====================
 const editorContainer = ref<HTMLElement | null>(null)
+const mdPreviewEl = ref<HTMLElement | null>(null)
 const editorView = shallowRef<EditorView | null>(null)
 let isInitializing = false
 
@@ -1110,7 +1111,22 @@ watch(() => props.tab.language, () => {
   if (props.tab.language === 'markdown') markdown.initMermaid(colors.value.isDark)
 })
 
-watch(() => settingStore.config?.theme?.currentTheme, () => reconfigureAppearance())
+// markdown 预览：v-html 更新后把 .mermaid-chart 渲染成图（需等 DOM 打完补丁再查节点）。
+// 监听防抖后的 previewHtml（而非 renderedHtml）：图表随预览批次一起渲染，不随按键抖动。
+async function renderPreviewMermaid(force = false) {
+  await nextTick()
+  await markdown.renderMermaidDiagrams(mdPreviewEl.value, force)
+}
+watch(() => markdown.previewHtml.value, () => renderPreviewMermaid())
+
+watch(() => settingStore.config?.theme?.currentTheme, () => {
+  reconfigureAppearance()
+  // mermaid 主题在 initialize 时固定：深浅色切换后要重新初始化并重绘已生成的图
+  if (props.tab.language === 'markdown') {
+    markdown.initMermaid(colors.value.isDark)
+    renderPreviewMermaid(true)
+  }
+})
 watch(() => config.value?.editor?.tabSize, (s) => { if (editorView.value && s) editorView.value.dispatch({ effects: tabSizeCompartment.reconfigure(EditorState.tabSize.of(s)) }) })
 watch(() => config.value?.editor?.wordWrap, (w) => { if (w !== undefined) toggleWordWrap(w) })
 watch(() => config.value?.editor?.fontSize, () => reconfigureAppearance())
@@ -1212,7 +1228,7 @@ defineExpose({
 
       <!-- MD preview -->
       <div v-if="markdown.isMarkdown.value && (markdown.mdMode.value==='preview' || markdown.mdMode.value==='split')" class="overflow-auto p-4 bg-white dark:bg-[#1e1e1e] select-text" :class="markdown.mdMode.value==='split' ? 'w-1/2' : 'w-full'" @click="markdown.handlePreviewClick">
-        <div class="markdown-body" v-html="markdown.renderedHtml.value"></div>
+        <div ref="mdPreviewEl" class="markdown-body" v-html="markdown.previewHtml.value"></div>
       </div>
 
       <!-- Minimap -->
