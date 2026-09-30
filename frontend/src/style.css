@@ -6,29 +6,40 @@
    设计令牌（Design Tokens）
    此前各组件各自硬编码色值（菜单 #f0f0f0、标签 #e8e8e8、状态栏深色 #007acc…），
    导致深浅色下界面割裂。统一为语义化变量，组件只引用变量不再写字面色值。
-   v2.1 重塑：在原有颜色令牌基础上补齐尺寸 / 间距 / 字号 / 字重 / 语义色，
-   Chrome 五层（菜单 28 / 工具栏 30 / 标签 30 / 状态 24）由此派生。
+   v2.2 视觉重塑「暖砂 · 品牌蓝」：
+   - 亮色：暖纸色框架（#f5f4f1 系）替代冷灰，品牌蓝主色与图标蓝色系统一；
+   - 暗色：石墨底 + 亮蓝主色，层次用 border-strong / sunken-2 细分；
+   - 补齐动效曲线 / 三档阴影 / 主色 hover 派生令牌；
+   - Element Plus 主色系经 color-mix 对齐主题色，消除 EP 默认蓝割裂感。
+   Chrome 五层（菜单 28 / 工具栏 30 / 标签 30 / 状态 24）仍由此派生。
    ============================================================ */
 :root {
-  /* —— 颜色 —— */
+  /* —— 颜色 · 亮色「暖砂纸墨」 —— */
   --et-bg: #ffffff;            /* 编辑区主背景 */
-  --et-bg-sunken: #f7f8fa;     /* 框架区：菜单/工具/标签/状态栏 */
+  --et-bg-sunken: #f5f4f1;     /* 框架区：菜单/工具/标签/状态栏（暖砂） */
+  --et-bg-sunken-2: #eeede9;   /* 框架区更深一层：hover 行底 / 分隔 */
   --et-bg-elevated: #ffffff;   /* 浮层：下拉菜单、弹窗 */
-  --et-bg-hover: rgba(0, 0, 0, .06);
-  --et-bg-active: rgba(0, 0, 0, .09);
-  --et-border: #e3e5e8;
-  --et-fg: #1f2328;
-  --et-fg-muted: #6b7280;
-  --et-fg-subtle: #9ca3af;
-  --et-accent: #3b82f6;
-  --et-accent-soft: rgba(59, 130, 246, .12);
+  --et-bg-hover: rgba(32, 34, 36, .05);
+  --et-bg-active: rgba(32, 34, 36, .09);
+  --et-border: #e4e2dc;
+  --et-border-strong: #ceccc5;
+  --et-fg: #26282b;
+  --et-fg-muted: #6d7076;
+  --et-fg-subtle: #9b9ea3;
+  --et-accent: #2563eb;        /* 品牌蓝：比默认 EP 蓝更深沉，与图标蓝色系一致 */
+  --et-accent-hover: #1d4ed8;
+  --et-accent-soft: rgba(37, 99, 235, .10);
   --et-accent-contrast: #ffffff;
-  --et-shadow-sm: 0 1px 2px rgba(0, 0, 0, .06);
-  --et-shadow-md: 0 6px 20px rgba(0, 0, 0, .12), 0 2px 6px rgba(0, 0, 0, .06);
+  --et-shadow-sm: 0 1px 2px rgba(28, 30, 32, .07);
+  --et-shadow-md: 0 2px 6px rgba(28, 30, 32, .07), 0 10px 28px rgba(28, 30, 32, .13);
+  --et-shadow-lg: 0 4px 12px rgba(28, 30, 32, .08), 0 24px 56px rgba(28, 30, 32, .17);
 
   /* —— 圆角 —— */
-  --et-radius: 6px;
-  --et-radius-sm: 4px;
+  --et-radius: 7px;
+  --et-radius-sm: 5px;
+
+  /* —— 动效 —— */
+  --et-ease: cubic-bezier(.25, .6, .3, 1);
 
   /* —— Chrome 高度（v2.1 重塑后阶梯：28 / 30 / 30 / 24） —— */
   --et-h-menu: 28px;
@@ -63,13 +74,26 @@
   --et-fw-semibold: 600;
 
   /* —— 语义色（不再用 Tailwind red/yellow/green 字面值） —— */
-  --et-danger: #ef4444;
-  --et-warn: #f59e0b;
-  --et-success: #22c55e;
-  --et-info: #3b82f6;
-  --et-danger-bg: rgba(239, 68, 68, .10);
-  --et-warn-bg: rgba(245, 158, 11, .10);
-  --et-success-bg: rgba(34, 197, 94, .10);
+  --et-danger: #dc2626;
+  --et-warn: #d97706;
+  --et-success: #16a34a;
+  --et-info: #0369a1;
+  --et-danger-bg: rgba(220, 38, 38, .09);
+  --et-warn-bg: rgba(217, 119, 6, .10);
+  --et-success-bg: rgba(22, 163, 74, .10);
+
+  /* —— Element Plus 主色对齐：全局统一品牌色，消除 EP 默认蓝割裂 —— */
+  --el-color-primary: var(--et-accent);
+  --el-color-primary-dark-2: color-mix(in srgb, var(--et-accent) 82%, #000);
+  --el-color-primary-light-3: color-mix(in srgb, var(--et-accent) 70%, var(--et-bg));
+  --el-color-primary-light-5: color-mix(in srgb, var(--et-accent) 50%, var(--et-bg));
+  --el-color-primary-light-7: color-mix(in srgb, var(--et-accent) 30%, var(--et-bg));
+  --el-color-primary-light-8: color-mix(in srgb, var(--et-accent) 20%, var(--et-bg));
+  --el-color-primary-light-9: color-mix(in srgb, var(--et-accent) 10%, var(--et-bg));
+  --el-color-danger: var(--et-danger);
+  --el-color-warning: var(--et-warn);
+  --el-color-success: var(--et-success);
+  --el-color-info: var(--et-info);
 
   /* —— 行高 —— */
   --et-lh-tight: 1.2;
@@ -77,24 +101,29 @@
 }
 
 html.dark {
-  --et-bg: #1e1e1e;
-  --et-bg-sunken: #252526;
-  --et-bg-elevated: #2b2b2d;
-  --et-bg-hover: rgba(255, 255, 255, .08);
-  --et-bg-active: rgba(255, 255, 255, .12);
-  --et-border: #3a3a3c;
-  --et-fg: #e4e4e7;
-  --et-fg-muted: #a1a1aa;
-  --et-fg-subtle: #71717a;
-  --et-accent: #60a5fa;
+  /* —— 颜色 · 暗色「石墨蓝调」 —— */
+  --et-bg: #16181a;
+  --et-bg-sunken: #1d2023;
+  --et-bg-sunken-2: #24282b;
+  --et-bg-elevated: #22262a;
+  --et-bg-hover: rgba(255, 255, 255, .06);
+  --et-bg-active: rgba(255, 255, 255, .10);
+  --et-border: #30363b;
+  --et-border-strong: #414950;
+  --et-fg: #d9dcde;
+  --et-fg-muted: #9aa0a5;
+  --et-fg-subtle: #6c7278;
+  --et-accent: #60a5fa;        /* 亮蓝：暗底上足够醒目 */
+  --et-accent-hover: #93c5fd;
   --et-accent-soft: rgba(96, 165, 250, .16);
-  --et-accent-contrast: #0b1220;
-  --et-shadow-sm: 0 1px 2px rgba(0, 0, 0, .4);
-  --et-shadow-md: 0 8px 24px rgba(0, 0, 0, .55), 0 2px 6px rgba(0, 0, 0, .35);
+  --et-accent-contrast: #0c201d;
+  --et-shadow-sm: 0 1px 2px rgba(0, 0, 0, .45);
+  --et-shadow-md: 0 2px 8px rgba(0, 0, 0, .45), 0 12px 32px rgba(0, 0, 0, .5);
+  --et-shadow-lg: 0 4px 14px rgba(0, 0, 0, .45), 0 26px 60px rgba(0, 0, 0, .6);
   --et-danger: #f87171;
   --et-warn: #fbbf24;
   --et-success: #4ade80;
-  --et-info: #60a5fa;
+  --et-info: #38bdf8;
   --et-danger-bg: rgba(248, 113, 113, .14);
   --et-warn-bg: rgba(251, 191, 36, .14);
   --et-success-bg: rgba(74, 222, 128, .14);
@@ -144,7 +173,7 @@ html.dark body {
   width: 100%;
   min-height: 100px;
   font-size: var(--editor-font-size, 13px);
-  font-family: var(--editor-font-family, 'Consolas', 'Monaco', 'Courier New', monospace);
+  font-family: var(--editor-font-family, 'Cascadia Mono', 'Consolas', 'JetBrains Mono', 'Courier New', monospace);
   /* WebView2 fix: -webkit-user-drag: element 会破坏文本选择 */
   -webkit-user-drag: none;
 }
@@ -232,13 +261,13 @@ textarea,
 
 ::-webkit-scrollbar-thumb {
   background: var(--et-bg-active);
-  border-radius: 6px;
+  border-radius: 8px;
   border: 2px solid transparent;
   background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--et-fg-subtle);
+  background: var(--et-border-strong);
   background-clip: content-box;
 }
 
@@ -344,24 +373,15 @@ html.dark .file-tree-item:hover {
 }
 
 .file-tree-item.selected {
-  background-color: rgba(59, 130, 246, 0.1);
-}
-
-html.dark .file-tree-item.selected {
-  background-color: rgba(59, 130, 246, 0.2);
+  background-color: var(--et-accent-soft);
 }
 
 /* Status bar */
 .status-bar {
   font-size: 12px;
   padding: 4px 8px;
-  background-color: #f0f0f0;
-  border-top: 1px solid #ddd;
-}
-
-html.dark .status-bar {
-  background-color: #252526;
-  border-top: 1px solid #404040;
+  background-color: var(--et-bg-sunken);
+  border-top: 1px solid var(--et-border);
 }
 
 /* Menu styles */
@@ -381,13 +401,8 @@ html.dark .menu-item:hover {
 
 /* Toolbar */
 .toolbar {
-  background-color: #fff;
-  border-bottom: 1px solid #e5e5e5;
-}
-
-html.dark .toolbar {
-  background-color: #252526;
-  border-bottom: 1px solid #404040;
+  background-color: var(--et-bg);
+  border-bottom: 1px solid var(--et-border);
 }
 
 /* Modal backdrop */
@@ -439,14 +454,8 @@ html.dark .diff-removed {
 button:focus,
 input:focus,
 select:focus {
-  outline: 2px solid #3b82f6;
+  outline: 2px solid var(--et-accent);
   outline-offset: 2px;
-}
-
-html.dark button:focus,
-html.dark input:focus,
-html.dark select:focus {
-  outline-color: #60a5fa;
 }
 
 /* Tailwind utilities - select-text */
@@ -479,7 +488,7 @@ html.dark select:focus {
 }
 
 .resize-handle:hover {
-  background-color: #3b82f6;
+  background-color: var(--et-accent);
 }
 
 /* Context Menu */
@@ -512,11 +521,11 @@ html.dark select:focus {
 }
 
 .context-menu-item.danger {
-  color: #ef4444;
+  color: var(--et-danger);
 }
 
 .context-menu-item.danger:hover {
-  background-color: rgba(239, 68, 68, .1);
+  background-color: var(--et-danger-bg);
 }
 
 .context-menu-divider {
@@ -783,57 +792,57 @@ html.dark select:focus {
   color: var(--et-fg-muted);
 }
 
-/* --- Element Plus dark mode overrides --- */
+/* --- Element Plus dark mode overrides（对齐「石墨青焰」令牌） --- */
 html.dark {
-  --el-bg-color: #1e1e1e;
-  --el-bg-color-overlay: #252526;
-  --el-text-color-primary: #e0e0e0;
-  --el-text-color-regular: #d4d4d4;
-  --el-text-color-secondary: #9ca3af;
-  --el-border-color: #404040;
-  --el-border-color-light: #374151;
-  --el-bg-color-page: #1e1e1e;
-  --el-fill-color: #3c3c3c;
-  --el-fill-color-light: #333;
-  --el-fill-color-blank: #252526;
+  --el-bg-color: var(--et-bg);
+  --el-bg-color-overlay: var(--et-bg-elevated);
+  --el-text-color-primary: var(--et-fg);
+  --el-text-color-regular: var(--et-fg);
+  --el-text-color-secondary: var(--et-fg-muted);
+  --el-border-color: var(--et-border-strong);
+  --el-border-color-light: var(--et-border);
+  --el-bg-color-page: var(--et-bg);
+  --el-fill-color: var(--et-bg-sunken-2);
+  --el-fill-color-light: var(--et-bg-sunken);
+  --el-fill-color-blank: var(--et-bg-sunken);
 }
 
 html.dark .el-dialog {
-  --el-dialog-bg-color: #252526;
+  --el-dialog-bg-color: var(--et-bg-elevated);
 }
 
 html.dark .el-dropdown-menu {
-  background-color: #2d2d2d;
+  background-color: var(--et-bg-elevated);
 }
 
 html.dark .el-dropdown-menu__item:not(.is-disabled):hover {
-  background-color: rgba(255, 255, 255, 0.08);
+  background-color: var(--et-bg-hover);
 }
 
 html.dark .el-button--default.is-text {
-  color: #d4d4d4;
+  color: var(--et-fg);
 }
 
 html.dark .el-switch__label--right {
-  color: #d4d4d4;
+  color: var(--et-fg);
 }
 
 html.dark .el-input__wrapper {
-  background-color: #3c3c3c;
-  box-shadow: 0 0 0 1px #404040 inset;
+  background-color: var(--et-bg-sunken-2);
+  box-shadow: 0 0 0 1px var(--et-border) inset;
 }
 
 html.dark .el-select .el-input__wrapper {
-  background-color: #3c3c3c;
+  background-color: var(--et-bg-sunken-2);
 }
 
 html.dark .el-input-number .el-input__wrapper {
-  background-color: #3c3c3c;
+  background-color: var(--et-bg-sunken-2);
 }
 
 html.dark .el-popper.is-dark {
-  background-color: #3c3c3c;
-  color: #e0e0e0;
+  background-color: var(--et-bg-sunken-2);
+  color: var(--et-fg);
 }
 
 /* ============================================================

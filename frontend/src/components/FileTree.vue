@@ -8,6 +8,7 @@ import {
 import type { TreeNode } from '@/types'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getTabViewType } from '@/utils'
+import { clampContextMenu } from '@/utils/menu'
 import {
   ChevronDown, ChevronRight, FileText, Folder, FolderOpen,
   FileCode, FileJson, File, Image, Database, Terminal,
@@ -88,6 +89,7 @@ async function handleClick() {
 }
 
 // Right-click context menu
+const contextMenuEl = ref<HTMLElement | null>(null)
 function handleContextMenu(e: MouseEvent) {
   e.preventDefault()
   e.stopPropagation()
@@ -98,6 +100,8 @@ function handleContextMenu(e: MouseEvent) {
     targetNode: props.node,
     isDir: props.node.isDir,
   }
+  // 渲染后按真实尺寸夹取，防止贴近窗口下缘时菜单被裁剪（点不到底部项）
+  void clampContextMenu(() => contextMenuEl.value, e.clientX, e.clientY)
   // Close inline inputs
   isRenaming.value = false
   isNewItem.value = false
@@ -529,6 +533,18 @@ async function handleCopy() {
   }
 }
 
+// ---- Show in Explorer ----
+
+async function showInExplorer() {
+  closeContextMenu()
+  try {
+    const { ShowInExplorer } = await import('../../wailsjs/go/main/App')
+    await ShowInExplorer(props.node.path)
+  } catch (err: any) {
+    ElMessage.error('打开资源管理器失败: ' + (err?.message || err))
+  }
+}
+
 // ---- Open in editor ----
 
 async function openInEditor() {
@@ -728,6 +744,7 @@ onUnmounted(() => {
     <Teleport to="body">
       <div
         v-if="contextMenu.visible"
+        ref="contextMenuEl"
         class="context-menu"
         :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
         @click.stop
@@ -767,6 +784,10 @@ onUnmounted(() => {
             <Clipboard class="w-4 h-4 mr-2 text-gray-400" />
             <span>复制路径</span>
           </div>
+          <div class="context-menu-item" @click="showInExplorer">
+            <FolderOpen class="w-4 h-4 mr-2 text-gray-400" />
+            <span>在资源管理器中显示</span>
+          </div>
           <div class="context-menu-divider"></div>
           <div class="context-menu-item danger" @click="handleDelete">
             <Trash2 class="w-4 h-4 mr-2" />
@@ -804,6 +825,10 @@ onUnmounted(() => {
           <div class="context-menu-item" @click="copyPath">
             <Clipboard class="w-4 h-4 mr-2 text-gray-400" />
             <span>复制路径</span>
+          </div>
+          <div class="context-menu-item" @click="showInExplorer">
+            <FolderOpen class="w-4 h-4 mr-2 text-gray-400" />
+            <span>在资源管理器中显示</span>
           </div>
           <div class="context-menu-divider"></div>
           <div class="context-menu-item danger" @click="handleDelete">

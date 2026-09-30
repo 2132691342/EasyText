@@ -219,6 +219,8 @@ export function SetSetting(arg1:string,arg2:string):Promise<void>;
 
 export function ShowConfirmDialog(arg1:string,arg2:string):Promise<boolean>;
 
+export function ShowInExplorer(arg1:string):Promise<void>;
+
 export function ShowMessageDialog(arg1:string,arg2:string,arg3:frontend.DialogType):Promise<string>;
 
 export function Shutdown(arg1:context.Context):Promise<void>;

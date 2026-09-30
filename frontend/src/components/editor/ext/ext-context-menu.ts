@@ -34,10 +34,10 @@ export const CONTEXT_MENU_SECTIONS: ContextMenuSection[] = [
   // 剪切 / 复制 / 粘贴 / 全选
   {
     items: [
-      { cmd: 'cut',       label: '剪切',   shortcut: 'Ctrl+X', needSelection: true },
-      { cmd: 'copy',      label: '复制',   shortcut: 'Ctrl+C', needSelection: true },
-      { cmd: 'paste',     label: '粘贴',   shortcut: 'Ctrl+V' },
-      { cmd: 'selectAll', label: '全选',   shortcut: 'Ctrl+A' },
+      { cmd: 'cut',        label: '剪切',   shortcut: 'Ctrl+X', needSelection: true },
+      { cmd: 'copy',       label: '复制',   shortcut: 'Ctrl+C', needSelection: true },
+      { cmd: 'paste',      label: '粘贴',   shortcut: 'Ctrl+V' },
+      { cmd: 'select-all', label: '全选',   shortcut: 'Ctrl+A' },
     ],
   },
   // 撤销 / 重做
@@ -54,22 +54,24 @@ export const CONTEXT_MENU_SECTIONS: ContextMenuSection[] = [
       { cmd: 'replace', label: '替换', shortcut: 'Ctrl+H' },
     ],
   },
-  // 行操作
+  // 行操作（cmd 必须与 CodeEditor.handleEditorCommand 识别的名字一致：
+  // 此前这里发的是 selectAll/duplicate/delete-line/move-up 等自造名，
+  // 编辑器全部静默忽略，右键菜单 8 个项点了没反应）
   {
     items: [
-      { cmd: 'comment-line', label: '注释/取消注释', shortcut: 'Ctrl+/' },
-      { cmd: 'duplicate',    label: '复制当前行',   shortcut: 'Ctrl+D' },
-      { cmd: 'delete-line',  label: '删除当前行',   shortcut: 'Ctrl+L' },
-      { cmd: 'move-up',      label: '上移当前行',   shortcut: 'Ctrl+Shift+↑' },
-      { cmd: 'move-down',    label: '下移当前行',   shortcut: 'Ctrl+Shift+↓' },
+      { cmd: 'comment-line',  label: '注释/取消注释', shortcut: 'Ctrl+/' },
+      { cmd: 'line-duplicate', label: '复制当前行',   shortcut: 'Ctrl+D' },
+      { cmd: 'line-remove',    label: '删除当前行',   shortcut: 'Ctrl+L' },
+      { cmd: 'line-moveUp',    label: '上移当前行',   shortcut: 'Ctrl+Shift+↑' },
+      { cmd: 'line-moveDown',  label: '下移当前行',   shortcut: 'Ctrl+Shift+↓' },
     ],
   },
-  // 大小写转换
+  // 大小写转换（case-* 前缀）
   {
     items: [
-      { cmd: 'uppercase', label: '转为大写',     needSelection: true },
-      { cmd: 'lowercase', label: '转为小写',     needSelection: true },
-      { cmd: 'titlecase', label: '首字母大写',   needSelection: true },
+      { cmd: 'case-upper', label: '转为大写',     needSelection: true },
+      { cmd: 'case-lower', label: '转为小写',     needSelection: true },
+      { cmd: 'case-title', label: '首字母大写',   needSelection: true },
     ],
   },
   // 格式化工具
@@ -84,9 +86,9 @@ export const CONTEXT_MENU_SECTIONS: ContextMenuSection[] = [
   // 空白处理
   {
     items: [
-      { cmd: 'tab-to-spaces',  label: 'Tab 转空格' },
-      { cmd: 'spaces-to-tabs', label: '空格转 Tab' },
-      { cmd: 'trim-trailing',  label: '去除行尾空格' },
+      { cmd: 'tab-to-spaces',      label: 'Tab 转空格' },
+      { cmd: 'spaces-all-to-tabs', label: '空格转 Tab' },
+      { cmd: 'trim-tail',          label: '去除行尾空格' },
     ],
   },
 ]

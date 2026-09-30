@@ -152,6 +152,12 @@ export function useCommands(deps: {
       'prev-bookmark': () => execEd('prev-bookmark'),
       'clear-bookmarks': () => execEd('clear-bookmarks'),
       'toggle-wrap': () => execEd('toggle-word-wrap'),
+      // 显示空白字符：走编辑器的 toggle 分支（写回配置并持久化）。
+      // 此前派发 'show-whitespace' 是单向强制开启——勾选类菜单只能开不能关，
+      // 也不落盘，勾选状态永远不同步。
+      'toggle-whitespace': () => execEd('toggle-whitespace'),
+      // 视图→显示文件树：此前无处理器，点击静默无效
+      'showFileTree': () => { deps.showFileTree.value = !deps.showFileTree.value },
       'toggle-filelist': () => { deps.showFileList.value = !deps.showFileList.value },
       'toggle-toolbar': () => {
         if (ss.config) { ss.config.ui.showToolBar = !ss.config.ui.showToolBar; ss.saveConfig() }
@@ -162,7 +168,20 @@ export function useCommands(deps: {
       'column-mode': () => execEd('column-mode'),
       'column-block': () => { deps.showColumnEdit.value = true },
       'preferences': () => { deps.showSettings.value = true },
-      'theme-style': () => { deps.showSettings.value = true },
+      // 主题风格子菜单：按名称直接应用主题（点击即生效并落盘）。
+      // 此前只是打开设置页，选了主题没有任何效果。
+      'theme-style': (name: string) => {
+        const hit = ss.availableThemes.find(
+          t => t.name.toLowerCase() === String(name).toLowerCase()
+            || t.key.toLowerCase() === String(name).toLowerCase(),
+        )
+        if (hit) {
+          ss.updateTheme(hit.key)
+          ElMessage.success('主题已切换：' + hit.name)
+        } else {
+          deps.showSettings.value = true
+        }
+      },
       'define-lang': () => { deps.showSettings.value = true },
       'lang-suffix': () => { deps.showSettings.value = true },
       'shortcut-mgr': () => { deps.showSettings.value = true },
@@ -249,7 +268,6 @@ export function useCommands(deps: {
       'zoom-out': () => {
         if (ss.config) { ss.config.ui.zoomLevel = Math.max(50, (ss.config.ui.zoomLevel || 100) - 10); ss.saveConfig() }
       },
-      'toggle-whitespace': () => execEd('show-whitespace'),
       'toggle-indent-guide': () => execEd('toggle-indent-guide'),
       'toggle-tail': (on: boolean) => on ? deps.startTail() : deps.stopTail(),
       'toggle-auto-save-cycle': (on: boolean) => {
@@ -289,7 +307,11 @@ export function useCommands(deps: {
       'zoom-reset': () => {
         if (ss.config) { ss.config.ui.zoomLevel = 100; ss.saveConfig() }
       },
+      // 图标大小：菜单提供 14/16/18 三档（此前只有 16/20/24 的处理器，
+      // 菜单点 14/18 静默无效）
+      'iconsize-14': () => { if (ss.config) { ss.config.ui.toolbarIconSize = 14; ss.saveConfig() } },
       'iconsize-16': () => { if (ss.config) { ss.config.ui.toolbarIconSize = 16; ss.saveConfig() } },
+      'iconsize-18': () => { if (ss.config) { ss.config.ui.toolbarIconSize = 18; ss.saveConfig() } },
       'iconsize-20': () => { if (ss.config) { ss.config.ui.toolbarIconSize = 20; ss.saveConfig() } },
       'iconsize-24': () => { if (ss.config) { ss.config.ui.toolbarIconSize = 24; ss.saveConfig() } },
       'encode-ANSI': () => deps.reopenWithEncoding('GBK'),
@@ -318,6 +340,15 @@ export function useCommands(deps: {
       'encode-turkish': () => deps.reopenWithEncoding('ISO-8859-9'),
       'encode-vietnamese': () => deps.reopenWithEncoding('Windows-1258'),
       'encode-we': () => deps.reopenWithEncoding('ISO-8859-1'),
+      // —— 编码菜单：此前「探测/以UTF-8打开/保存为/转换」6 项全部没有
+      //    处理器，点击静默无效。统一接线到已有能力。
+      'open-with-encoding': () => { deps.showEncodeConvert.value = true },
+      'open-as-utf8': () => deps.reopenWithEncoding('UTF-8'),
+      'save-as-utf8-nobom': () => deps.convertTo('UTF-8'),
+      'save-as-utf8-bom': () => deps.convertTo('UTF-8-BOM'),
+      'convert-to-utf8': () => deps.convertTo('UTF-8'),
+      'convert-to-utf8-nobom': () => deps.convertTo('UTF-8'),
+      'convert-to-utf8-bom': () => deps.convertTo('UTF-8-BOM'),
       'rename-file': deps.renameCurrentFile,
       'new-window': () => ElMessage.info('多窗口暂不支持，请启动新实例'),
       'open-view': deps.manageFavorites,
@@ -370,6 +401,31 @@ export function useCommands(deps: {
       'clear-favorites': () => {
         if (ss.config) { ss.config.ui.favorites = []; ss.saveConfig(); ElMessage.success('收藏夹已清空') }
       },
+      // —— 设置/工具菜单断链项补齐 ——
+      // 宏管理：无独立管理界面，指引到已有宏功能入口
+      'macro-manager': () => ElMessage.info('请使用「工具」菜单的宏功能：记录宏 / 播放宏 / 保存宏 / 运行宏(批量)'),
+      // 片段管理：直接打开侧栏代码片段面板（增删改都在那里）
+      'snippet-manager': () => { deps.showSnippetPanel.value = !deps.showSnippetPanel.value },
+      // 文件关联：调用后端注册（当前用户级写入，无需管理员权限）
+      'file-assoc': async () => {
+        try {
+          const { IsFileAssocRegistered, RegisterFileAssoc } = await import('../../wailsjs/go/main/App')
+          const registered = await IsFileAssocRegistered()
+          const action = registered
+            ? ElMessageBox.confirm('文件类型已注册过。要重新注册（刷新）吗？', '关联文件类型', {
+                confirmButtonText: '重新注册', cancelButtonText: '取消', type: 'info',
+              })
+            : ElMessageBox.confirm('将 EasyText 注册为常用文本文件的打开方式（当前用户级，无需管理员权限）？', '关联文件类型', {
+                confirmButtonText: '注册', cancelButtonText: '取消', type: 'info',
+              })
+          const ok = await action.then(() => true).catch(() => false)
+          if (!ok) return
+          const exts = await RegisterFileAssoc()
+          ElMessage.success('已关联：' + (exts?.join('、') || '完成'))
+        } catch (e: any) {
+          ElMessage.error('文件关联失败: ' + (e?.message || e))
+        }
+      },
       // 第四阶段
       'script-manager': () => { deps.showScriptManager.value = true },
       'image-editor': deps.showImageEditorView,
@@ -401,10 +457,14 @@ export function useCommands(deps: {
   async function openExplorer() {
     const t = ed.activeTab
     if (!t?.path) return
+    // 走 Go 侧 explorer.exe /select 定位文件；BrowserOpenURL('file:///…')
+    // 在 WebView2 下经常没反应
     try {
-      const { BrowserOpenURL } = await import('../../wailsjs/runtime/runtime')
-      BrowserOpenURL('file:///' + t.path.replace(/\\/g, '/').replace(/\/[^\/]+$/, ''))
-    } catch { /* ignore */ }
+      const { ShowInExplorer } = await import('../../wailsjs/go/main/App')
+      await ShowInExplorer(t.path)
+    } catch (e: any) {
+      ElMessage.error('打开资源管理器失败: ' + (e?.message || e))
+    }
   }
 
   return { onMenuCmd }

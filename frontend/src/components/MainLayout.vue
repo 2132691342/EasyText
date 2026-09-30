@@ -480,15 +480,6 @@ function toggleLogMode() {
   }
 }
 
-async function openExplorer() {
-  const t = ed.activeTab
-  if (!t?.path) return
-  try {
-    const { BrowserOpenURL } = await import('../../wailsjs/runtime/runtime')
-    BrowserOpenURL('file:///' + t.path.replace(/\\/g, '/').replace(/\/[^\/]+$/, ''))
-  } catch (e) { console.warn(e) }
-}
-
 // ============================
 //  编码：以某编码重新解码打开 / 转换为某编码
 // ============================

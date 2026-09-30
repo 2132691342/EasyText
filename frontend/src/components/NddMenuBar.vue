@@ -332,15 +332,15 @@ function clickItem(it: Item) {
   }
 }
 
-function pickZoom(v: number) { emit('cmd', 'iconsize-' + v); close() }
-function pickIconSize(v: number) { emit('cmd', 'iconsize-' + v); close() }
 function pickTheme(name: string) { emit('cmd', 'theme-style', name); close() }
 function pickLang(name: string) { emit('cmd', 'set-lang', name); close() }
 function pickUiLang(name: string) { emit('cmd', name === 'zh' ? 'lang-zh' : 'lang-en'); close() }
 
 function pickSub(id: string, sub: Item) {
-  if (id === 'zoom') return pickZoom(sub.cmd === 'zoom-in' ? 110 : sub.cmd === 'zoom-out' ? 90 : 100)
-  if (id === 'iconsize') return pickIconSize(parseInt((sub.cmd || '').split('-')[1] || '18', 10))
+  // 缩放子菜单：直接派发子项命令（zoom-in/zoom-out/zoom-reset）。
+  // 此前 pickZoom 错把它转成 'iconsize-110/90/100'——命令表里根本没有
+  // 这些名字，点缩放三个项全部静默无效。
+  if (id === 'zoom' || id === 'iconsize') return clickItem(sub)
   if (id === 'theme') return pickTheme(sub.label || '')
   if (id === 'uilang') return pickUiLang((sub.cmd || '').endsWith('zh') ? 'zh' : 'en')
   clickItem(sub)
@@ -398,12 +398,15 @@ onBeforeUnmount(() => {
 })
 
 // ---- 子菜单内容 ----
-const themes = ['default', 'light', 'dark', 'monokai', 'solarized-light', 'solarized-dark', 'github-light', 'github-dark']
+// 主题列表直接取自 settingStore 的 19 套主题表（label 与 key 一一对应），
+// 点击即应用——此前是 8 个手写主题名，多数与实际主题 key 对不上，
+// 点了只会打开设置页而不切换主题。
+const themes: { label: string; key: string }[] = se.availableThemes.map(t => ({ label: t.name, key: t.key }))
 function itemsForSub(id: string): Item[] {
   switch (id) {
     case 'zoom':     return [{ label: '放大', cmd: 'zoom-in' }, { label: '缩小', cmd: 'zoom-out' }, { label: '重置', cmd: 'zoom-reset' }]
     case 'iconsize': return [{ label: '14 px', cmd: 'iconsize-14' }, { label: '16 px', cmd: 'iconsize-16' }, { label: '18 px', cmd: 'iconsize-18' }]
-    case 'theme':    return themes.map(t => ({ label: t, cmd: 'theme-style' }))
+    case 'theme':    return themes.map(t => ({ label: t.label, cmd: 'theme-style' }))
     case 'uilang':   return [{ label: '简体中文', cmd: 'lang-zh' }, { label: 'English', cmd: 'lang-en' }]
     case 'fav':      return [{ label: '管理收藏夹...', cmd: 'manage-fav' }, { label: '清空收藏夹', cmd: 'clear-favorites' }]
     case 'recent':   return recent.value.length

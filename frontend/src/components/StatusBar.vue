@@ -9,6 +9,7 @@
  */
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useEditorStore, useSettingStore } from '@/stores'
+import { clampContextMenu } from '@/utils/menu'
 
 const editorStore = useEditorStore()
 const settingStore = useSettingStore()
@@ -66,10 +67,13 @@ function isItemVisible(key: string): boolean {
 function toggleItem(key: string) {
   settingStore.toggleStatusBarItem(key)
 }
+const statusMenuEl = ref<HTMLElement | null>(null)
 function onContextMenu(e: MouseEvent) {
   e.preventDefault()
   contextMenuPos.value = { x: e.clientX, y: e.clientY }
   showContextMenu.value = true
+  // 渲染后按真实尺寸夹取，防止贴近窗口下缘时菜单被裁剪（点不到底部项）
+  void clampContextMenu(() => statusMenuEl.value, e.clientX, e.clientY)
 }
 function closeContextMenu() {
   showContextMenu.value = false
@@ -142,6 +146,7 @@ onUnmounted(() => document.removeEventListener('click', closeContextMenu))
   <Teleport to="body">
     <div
       v-if="showContextMenu"
+      ref="statusMenuEl"
       class="context-menu statusbar-menu"
       :style="{ left: contextMenuPos.x + 'px', top: contextMenuPos.y + 'px' }"
       @click.stop

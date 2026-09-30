@@ -17,6 +17,7 @@ import { ElMessage } from 'element-plus'
 import type { EditorTab } from '@/types'
 import { SaveFile, RenameFile, GetDirectoryTree, SaveFileDialog } from '../../wailsjs/go/main/App'
 import { confirmDialog, confirmSaveDiscard } from '@/utils/confirm'
+import { clampContextMenu } from '@/utils/menu'
 
 const editorStore = useEditorStore()
 const fileStore = useFileStore()
@@ -95,6 +96,7 @@ function selectTab(tab: EditorTab) {
 }
 
 // 右键菜单
+const contextMenuEl = ref<HTMLElement | null>(null)
 function handleContextMenu(e: MouseEvent, tab: EditorTab) {
   e.preventDefault()
   e.stopPropagation()
@@ -104,6 +106,8 @@ function handleContextMenu(e: MouseEvent, tab: EditorTab) {
     y: e.clientY,
     tabId: tab.id,
   }
+  // 渲染后按真实尺寸夹取，防止贴近窗口下缘时菜单被裁剪（点不到底部项）
+  void clampContextMenu(() => contextMenuEl.value, e.clientX, e.clientY)
 }
 function closeContextMenu() {
   contextMenu.value.visible = false
@@ -189,12 +193,13 @@ async function showInExplorer() {
     ElMessage.warning('该标签无文件路径')
     return
   }
+  // 走 Go 侧 explorer.exe /select 定位文件；BrowserOpenURL('file:///…')
+  // 在 WebView2 下经常没反应（这正是此前"点了没反应"的原因）
   try {
-    const { BrowserOpenURL } = await import('../../wailsjs/runtime/runtime')
-    const dir = tab.path.substring(0, Math.max(tab.path.lastIndexOf('\\'), tab.path.lastIndexOf('/')))
-    BrowserOpenURL(`file:///${dir.replace(/\\/g, '/')}`)
-  } catch {
-    ElMessage.info(`目录: ${tab.path}`)
+    const { ShowInExplorer } = await import('../../wailsjs/go/main/App')
+    await ShowInExplorer(tab.path)
+  } catch (e: any) {
+    ElMessage.error('打开资源管理器失败: ' + (e?.message || e))
   }
 }
 async function reloadAsText() {
@@ -412,6 +417,7 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
     <Teleport to="body">
       <div
         v-if="contextMenu.visible"
+        ref="contextMenuEl"
         class="context-menu"
         :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
         @click.stop
@@ -508,20 +514,22 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
   cursor: pointer;
   border-right: 1px solid var(--et-border);
   color: var(--et-fg-muted);
-  transition: background-color 80ms ease, color 80ms ease;
+  transition: background-color 80ms var(--et-ease), color 80ms var(--et-ease);
 }
 .tab:last-child { border-right: none; }
 .tab:hover { background: var(--et-bg-hover); }
 .tab.is-active {
   background: var(--et-bg);
   color: var(--et-fg);
+  font-weight: var(--et-fw-medium);
 }
-/* 激活指示：顶部 2px 主色条 */
+/* 激活指示：顶部 2px 主色条（两端微收，避免与边框生硬相接） */
 .tab.is-active::before {
   content: '';
   position: absolute;
-  top: 0; left: 0; right: 0;
+  top: 0; left: 6px; right: 6px;
   height: 2px;
+  border-radius: 2px 2px 0 0;
   background: var(--et-accent);
 }
 
@@ -557,15 +565,15 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
   flex-shrink: 0;
 }
 
-/* 关闭按钮：常显，hover 时高亮 */
+/* 关闭按钮：常显，hover 时以 danger 色警示 */
 .tab-close {
   width: 18px;
   height: 18px;
   color: var(--et-fg-subtle);
 }
 .tab-close:hover {
-  background: var(--et-bg-active);
-  color: var(--et-fg);
+  background: var(--et-danger-bg);
+  color: var(--et-danger);
 }
 
 /* —— Tab action 按钮 —— */

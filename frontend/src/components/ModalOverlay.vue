@@ -197,12 +197,12 @@ onUnmounted(() => {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, .45);
+  background: rgba(10, 12, 13, .42);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
-  backdrop-filter: blur(2px);
+  backdrop-filter: blur(5px);
   -webkit-user-select: none;
   user-select: none;
 }
@@ -212,7 +212,7 @@ onUnmounted(() => {
   color: var(--et-fg);
   border: 1px solid var(--et-border);
   border-radius: var(--et-radius);
-  box-shadow: var(--et-shadow-md);
+  box-shadow: var(--et-shadow-lg);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -286,14 +286,14 @@ onUnmounted(() => {
   background: var(--et-bg-sunken);
 }
 
-/* —— 进出动画（120ms） —— */
+/* —— 进出动画（140ms，曲线取自 --et-ease） —— */
 .et-modal-enter-active,
 .et-modal-leave-active {
-  transition: opacity 120ms ease-out;
+  transition: opacity 140ms var(--et-ease);
 }
 .et-modal-enter-active .modal-container,
 .et-modal-leave-active .modal-container {
-  transition: transform 120ms ease-out, opacity 120ms ease-out;
+  transition: transform 140ms var(--et-ease), opacity 140ms var(--et-ease);
 }
 .et-modal-enter-from,
 .et-modal-leave-to {

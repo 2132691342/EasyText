@@ -11,6 +11,7 @@ import { GetDirectoryTree, CreateDirectory, SaveFile } from '../../wailsjs/go/ma
 import FileTree from './FileTree.vue'
 import { AlertCircle, FilePlus, FolderPlus, RefreshCw, FolderOpen } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
+import { clampContextMenu } from '@/utils/menu'
 
 const fileStore = useFileStore()
 const editorStore = useEditorStore()
@@ -57,6 +58,7 @@ async function refreshTree() {
   }
 }
 
+const sidebarMenuEl = ref<HTMLElement | null>(null)
 function handleSidebarContextMenu(e: MouseEvent) {
   if (!fileStore.hasDirectory) return
   e.preventDefault()
@@ -65,6 +67,8 @@ function handleSidebarContextMenu(e: MouseEvent) {
     x: e.clientX,
     y: e.clientY,
   }
+  // 渲染后按真实尺寸夹取，防止贴近窗口下缘时菜单被裁剪（点不到底部项）
+  void clampContextMenu(() => sidebarMenuEl.value, e.clientX, e.clientY)
 }
 function closeSidebarContextMenu() {
   sidebarContextMenu.value.visible = false
@@ -183,6 +187,7 @@ onUnmounted(() => document.removeEventListener('click', handleDocumentClick))
     <Teleport to="body">
       <div
         v-if="sidebarContextMenu.visible"
+        ref="sidebarMenuEl"
         class="context-menu"
         :style="{ left: `${sidebarContextMenu.x}px`, top: `${sidebarContextMenu.y}px` }"
         @click.stop

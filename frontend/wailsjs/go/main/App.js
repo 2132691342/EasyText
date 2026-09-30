@@ -426,6 +426,10 @@ export function ShowConfirmDialog(arg1, arg2) {
   return window['go']['main']['App']['ShowConfirmDialog'](arg1, arg2);
 }
 
+export function ShowInExplorer(arg1) {
+  return window['go']['main']['App']['ShowInExplorer'](arg1);
+}
+
 export function ShowMessageDialog(arg1, arg2, arg3) {
   return window['go']['main']['App']['ShowMessageDialog'](arg1, arg2, arg3);
 }

@@ -2,6 +2,7 @@ package api
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"easy-text/backend/file"
@@ -122,6 +123,44 @@ func (h *Handler) CheckPathExists(path string) (bool, error) {
 		return false, nil
 	}
 	return false, utils.WrapError(1002, "无法检查路径", err)
+}
+
+// ShowInExplorer 在 Windows 资源管理器中显示文件（并选中）或打开文件夹。
+//
+// 此前前端用 BrowserOpenURL("file:///...") 实现，在 WebView2 下经常毫无反应
+// （file:// 协议可能被交给浏览器或被静默吞掉），且无法定位选中文件。
+// 正确做法是 explorer.exe /select,<路径>（文件）或 explorer.exe <目录>（文件夹）。
+// 注意：explorer.exe 启动成功时退出码也是 1，不能按失败处理，因此只 Start 不 Wait。
+func (h *Handler) ShowInExplorer(path string) error {
+	if path == "" {
+		return utils.NewAppError(1001, "路径不能为空", "")
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		abs = path
+	}
+	info, err := os.Stat(abs)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return utils.ErrFileNotFound
+		}
+		return utils.WrapError(1002, "无法访问路径", err)
+	}
+
+	var cmd *exec.Cmd
+	if info.IsDir() {
+		cmd = exec.Command("explorer.exe", abs)
+	} else {
+		// /select, 与路径之间不能拆成两个参数（explorer 的解析怪癖），
+		// 否则资源管理器只打开默认页，不会选中文件
+		cmd = exec.Command("explorer.exe", "/select,"+abs)
+	}
+	if err := cmd.Start(); err != nil {
+		return utils.WrapError(1002, "无法启动资源管理器", err)
+	}
+	// 不 Wait：explorer 是独立 GUI 进程，等待它会阻塞绑定调用，且其
+	// 退出码恒为 1 没有判断价值。进程句柄由 OS 回收。
+	return nil
 }
 
 // IsBinaryFile 检查文件是否为二进制文件
