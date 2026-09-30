@@ -10,6 +10,20 @@ export const useFileStore = defineStore('file', () => {
   const selectedPath = ref<string | null>(null)
   const isLoading = ref(false)
 
+  // ============ 目录树剪贴板（剪切/复制/粘贴文件与文件夹） ============
+  const treeClipboard = ref<{ path: string; name: string; isDir: boolean; cut: boolean } | null>(null)
+
+  function setTreeClipboard(item: { path: string; name: string; isDir: boolean; cut: boolean } | null) {
+    treeClipboard.value = item
+  }
+
+  // 拖拽中的源节点路径：拖拽源与放置目标是两个组件实例，经 store 共享
+  const treeDragPath = ref<string | null>(null)
+
+  function setTreeDragPath(path: string | null) {
+    treeDragPath.value = path
+  }
+
   // Computed
   const hasDirectory = computed(() => currentDirectory.value !== null)
 
@@ -114,6 +128,10 @@ export const useFileStore = defineStore('file', () => {
     expandedPaths,
     selectedPath,
     isLoading,
+    treeClipboard,
+    setTreeClipboard,
+    treeDragPath,
+    setTreeDragPath,
     // Computed
     hasDirectory,
     // Actions

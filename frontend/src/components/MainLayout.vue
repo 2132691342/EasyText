@@ -321,6 +321,9 @@ function resizeEnd() {
 // 拖拽增强：支持文件/文件夹/文本拖放
 function onDrop(e: DragEvent) {
   e.preventDefault()
+  // 目录树内部拖拽（移动文件）已在 FileTree 处理，这里忽略，
+  // 避免把节点路径当成文本插入编辑器
+  if (e.dataTransfer?.types.includes('application/x-easytext-node')) return
   const fs = e.dataTransfer?.files
   if (fs && fs.length > 0) {
     for (let i = 0; i < fs.length; i++) {
@@ -919,7 +922,7 @@ watch(() => ed.activeTab?.path, () => { watchActiveTab() })
     <NddMenuBar @cmd="onMenuCmd" />
 
     <!-- 工具栏 -->
-    <NddToolbar v-if="showToolbar" :icon-size="ss.config?.ui?.toolbarIconSize || 18" :tailing="tailingStatus" @toolbar-command="onMenuCmd" />
+    <NddToolbar v-if="showToolbar" :icon-size="ss.config?.ui?.toolbarIconSize || 16" :tailing="tailingStatus" @toolbar-command="onMenuCmd" />
 
     <!-- 主体：侧边栏 + 编辑区 -->
     <div class="flex-1 flex overflow-hidden min-h-0">

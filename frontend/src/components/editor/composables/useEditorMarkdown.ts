@@ -86,7 +86,19 @@ export function useEditorMarkdown(
   content: Ref<string>,
   colors: Ref<ThemeColors>,
 ): UseEditorMarkdown {
-  const mdMode = ref<MdViewMode>('split')
+  /**
+   * 默认「编辑」模式：此前默认 'split'，而分屏布局类当时缺失，导致
+   * .md 文件一打开就进入坏布局。模式选择持久化到 localStorage，
+   * CodeEditor 随视图类型切换销毁重建后仍能恢复用户上次的模式。
+   */
+  const MD_MODE_KEY = 'easytext-md-mode'
+  const mdMode = ref<MdViewMode>(
+    ((() => {
+      const saved = localStorage.getItem(MD_MODE_KEY)
+      return saved === 'edit' || saved === 'split' || saved === 'preview' ? saved : 'edit'
+    })()) as MdViewMode,
+  )
+  watch(mdMode, v => { try { localStorage.setItem(MD_MODE_KEY, v) } catch { /* ignore */ } })
   const isMarkdown = computed(() => language.value === 'markdown')
   /** 预览是否可见：edit 模式或非 markdown 都不需要渲染预览 */
   const isPreviewVisible = computed(() => isMarkdown.value && mdMode.value !== 'edit')

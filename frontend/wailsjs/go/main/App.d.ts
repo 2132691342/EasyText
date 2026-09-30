@@ -29,6 +29,8 @@ export function BinaryCompare(arg1:string,arg2:string):Promise<tools.BinCompareR
 
 export function CheckDraftConflict(arg1:string):Promise<number>;
 
+export function CheckPathExists(arg1:string):Promise<boolean>;
+
 export function ClearAllDrafts():Promise<void>;
 
 export function ClearRecentFiles():Promise<void>;
@@ -58,6 +60,8 @@ export function ConvertEncoding(arg1:Array<number>,arg2:string,arg3:string):Prom
 export function ConvertFromUTF8(arg1:string,arg2:string):Promise<Array<number>>;
 
 export function ConvertToUTF8(arg1:Array<number>,arg2:string):Promise<string>;
+
+export function CopyDirectory(arg1:string,arg2:string):Promise<void>;
 
 export function CopyFile(arg1:string,arg2:string):Promise<void>;
 
@@ -160,6 +164,8 @@ export function ListDrafts():Promise<Array<tools.DraftEntry>>;
 export function ListScripts():Promise<Array<tools.ScriptInfo>>;
 
 export function MinifyJSON(arg1:string):Promise<tools.JSONResult>;
+
+export function MoveFile(arg1:string,arg2:string):Promise<void>;
 
 export function OpenDirectoryDialog():Promise<string>;
 

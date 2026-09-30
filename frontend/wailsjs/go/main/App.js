@@ -46,6 +46,10 @@ export function CheckDraftConflict(arg1) {
   return window['go']['main']['App']['CheckDraftConflict'](arg1);
 }
 
+export function CheckPathExists(arg1) {
+  return window['go']['main']['App']['CheckPathExists'](arg1);
+}
+
 export function ClearAllDrafts() {
   return window['go']['main']['App']['ClearAllDrafts']();
 }
@@ -104,6 +108,10 @@ export function ConvertFromUTF8(arg1, arg2) {
 
 export function ConvertToUTF8(arg1, arg2) {
   return window['go']['main']['App']['ConvertToUTF8'](arg1, arg2);
+}
+
+export function CopyDirectory(arg1, arg2) {
+  return window['go']['main']['App']['CopyDirectory'](arg1, arg2);
 }
 
 export function CopyFile(arg1, arg2) {
@@ -308,6 +316,10 @@ export function ListScripts() {
 
 export function MinifyJSON(arg1) {
   return window['go']['main']['App']['MinifyJSON'](arg1);
+}
+
+export function MoveFile(arg1, arg2) {
+  return window['go']['main']['App']['MoveFile'](arg1, arg2);
 }
 
 export function OpenDirectoryDialog() {

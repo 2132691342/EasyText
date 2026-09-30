@@ -140,6 +140,9 @@ const MENUS = [
     { label: '显示函数列表', cmd: 'function-list' },
     { label: '显示文件监控', cmd: 'file-monitor' },
     { sep: true },
+    { label: '分屏视图', cmd: 'split-toggle' },
+    { label: '与分屏交换位置', cmd: 'split-swap' },
+    { sep: true },
     { label: '全屏(&F)', cmd: 'fullscreen', key: 'F11' },
   ] as Item[] },
   { label: '编码(&N)', items: [

@@ -57,7 +57,7 @@ export const useSettingStore = defineStore('setting', () => {
       showWebAddr: false,
       fileTreeWidth: 250,
       zoomLevel: 100,
-      toolbarIconSize: 18,
+      toolbarIconSize: 16,
       favorites: [],
       lastFolder: '',
       statusBarItems: {

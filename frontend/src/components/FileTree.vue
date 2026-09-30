@@ -3,7 +3,7 @@ import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import { useFileStore, useEditorStore } from '@/stores'
 import {
   ReadFile, DeleteFile, DeleteDirectory, RenameFile, CopyFile, CreateDirectory,
-  SaveFile, GetDirectoryTree
+  SaveFile, GetDirectoryTree, MoveFile, CopyDirectory, CheckPathExists
 } from '../../wailsjs/go/main/App'
 import type { TreeNode } from '@/types'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -11,7 +11,7 @@ import { getTabViewType } from '@/utils'
 import {
   ChevronDown, ChevronRight, FileText, Folder, FolderOpen,
   FileCode, FileJson, File, Image, Database, Terminal,
-  FilePlus, FolderPlus, Copy, Clipboard, Pencil, Trash2
+  FilePlus, FolderPlus, Copy, ClipboardPaste, Scissors, Clipboard, Pencil, Trash2
 } from 'lucide-vue-next'
 
 const props = defineProps<{
@@ -155,48 +155,166 @@ function getSep(path: string): string {
   return path.includes('\\') ? '\\' : '/'
 }
 
+// ==================== 拖拽移动（树内拖到目标文件夹） ====================
+// 拖拽源/目标是两个不同的组件实例，源路径放 fileStore 共享；
+// 高亮目标用本实例的 dropTargetPath 即可。
+const dropTargetPath = ref<string | null>(null)
+
+function onDragStart(e: DragEvent) {
+  fileStore.setTreeDragPath(props.node.path)
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', props.node.path)
+    // 内部树拖拽标记：MainLayout 的 document drop 监听据此忽略，
+    // 避免把节点路径当成文本插入编辑器
+    e.dataTransfer.setData('application/x-easytext-node', props.node.path)
+  }
+}
+function onDragEnd() {
+  fileStore.setTreeDragPath(null)
+  dropTargetPath.value = null
+}
+function canDropOn(target: TreeNode): boolean {
+  const srcPath = fileStore.treeDragPath
+  if (!srcPath || !target.isDir) return false
+  if (srcPath === target.path) return false
+  // 不能把节点拖进它自己的子目录
+  if (isAncestorOrEqual(srcPath, target.path)) return false
+  return true
+}
+function onDragOver(e: DragEvent) {
+  if (!canDropOn(props.node)) return
+  e.preventDefault()
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+  dropTargetPath.value = props.node.path
+}
+function onDragLeave() {
+  if (dropTargetPath.value === props.node.path) dropTargetPath.value = null
+}
+async function onDrop(e: DragEvent) {
+  e.preventDefault()
+  e.stopPropagation() // 不冒泡到 MainLayout 的 document drop（外部文件打开）监听
+  const srcPath = fileStore.treeDragPath
+  fileStore.setTreeDragPath(null)
+  dropTargetPath.value = null
+  if (!srcPath || !canDropOn(props.node)) return
+  const src = fileStore.findNode(srcPath)
+  if (!src) return
+  await moveNodeTo(src, props.node.path)
+}
+
+/** 把 src 移动到 targetDir 下（拖拽与剪切-粘贴共用） */
+async function moveNodeTo(src: TreeNode, targetDir: string) {
+  const sep = getSep(targetDir)
+  const dest = targetDir + sep + src.name
+  if (dest === src.path) return
+  try {
+    await MoveFile(src.path, dest)
+    relocateTabsUnder(src.path, dest)
+    fileStore.expandPath(targetDir)
+    await refreshTree()
+    ElMessage.success(`已移动到 ${targetDir.split(/[/\\]/).pop() || targetDir}`)
+  } catch (err: any) {
+    ElMessage.error('移动失败: ' + (err?.message || err))
+  }
+}
+
+/** 移动/重命名后同步更新受影响 tab 的路径（保持已打开状态不丢） */
+function relocateTabsUnder(oldPath: string, newPath: string) {
+  const sep = getSep(oldPath)
+  for (const t of editorStore.tabs) {
+    if (!t.path) continue
+    if (t.path === oldPath) {
+      editorStore.renameTab(t.id, newPath)
+    } else if (t.path.startsWith(oldPath + sep)) {
+      editorStore.renameTab(t.id, newPath + sep + t.path.slice(oldPath.length + sep.length))
+    }
+  }
+}
+
+// ==================== 剪切 / 复制 / 粘贴 ====================
+
+function cutNode() {
+  closeContextMenu()
+  fileStore.setTreeClipboard({ path: props.node.path, name: props.node.name, isDir: props.node.isDir, cut: true })
+  ElMessage.success('已剪切，请到目标文件夹粘贴')
+}
+function copyNode() {
+  closeContextMenu()
+  fileStore.setTreeClipboard({ path: props.node.path, name: props.node.name, isDir: props.node.isDir, cut: false })
+  ElMessage.success('已复制，请到目标文件夹粘贴')
+}
+async function pasteNode() {
+  closeContextMenu()
+  const clip = fileStore.treeClipboard
+  if (!clip) return
+  const targetDir = props.node.isDir ? props.node.path : getParentPath(props.node.path)
+  const sep = getSep(props.node.path)
+  const dest = targetDir + sep + clip.name
+  if (clip.path === dest || isAncestorOrEqual(clip.path, dest)) {
+    ElMessage.error('不能粘贴到自身或其子目录')
+    return
+  }
+  try {
+    // 重名预检：CopyFile 后端不拦截同名，统一在前端拦，避免静默覆盖
+    if (await CheckPathExists(dest)) {
+      ElMessage.error(`目标已存在：${clip.name}`)
+      return
+    }
+    if (clip.cut) {
+      await MoveFile(clip.path, dest)
+      relocateTabsUnder(clip.path, dest)
+      fileStore.setTreeClipboard(null)
+    } else if (clip.isDir) {
+      await CopyDirectory(clip.path, dest)
+    } else {
+      await CopyFile(clip.path, dest)
+    }
+    fileStore.expandPath(targetDir)
+    await refreshTree()
+    ElMessage.success(clip.cut ? '粘贴成功（已移动）' : '粘贴成功')
+  } catch (err: any) {
+    ElMessage.error('粘贴失败: ' + (err?.message || err))
+  }
+}
+
 // ---- New file/folder ----
+
+/** 展开目录（若是目录）并聚焦内联输入框，同时保证输入框滚进可视区 */
+function focusNewItemInput(isDir: boolean) {
+  if (props.node.isDir && !isExpanded.value) {
+    fileStore.expandPath(props.node.path)
+  }
+  isNewItem.value = true
+  newItemIsDir.value = isDir
+  newItemName.value = ''
+  setTimeout(() => {
+    newItemInput.value?.focus()
+    newItemInput.value?.scrollIntoView({ block: 'nearest' })
+  }, 100)
+}
 
 function startNewFile() {
   closeContextMenu()
   if (props.node.isDir) {
-    if (!isExpanded.value) {
-      fileStore.expandPath(props.node.path)
-    }
-    isNewItem.value = true
-    newItemIsDir.value = false
-    newItemName.value = ''
-    setTimeout(() => newItemInput.value?.focus(), 100)
+    focusNewItemInput(false)
   } else {
     // 在文件节点上新建：目标目录是该文件的父目录（confirmNewItem 会据此拼路径）。
     // 这里只打开内联输入框，不写磁盘——早期版本会先创建一个 __new_placeholder__
     // 目录，属于残留调试代码，会在用户磁盘上留下垃圾目录。
-    isNewItem.value = true
-    newItemIsDir.value = false
-    newItemName.value = ''
-    setTimeout(() => newItemInput.value?.focus(), 100)
+    focusNewItemInput(false)
   }
 }
 
 function startNewFolder() {
   closeContextMenu()
-  if (props.node.isDir) {
-    if (!isExpanded.value) {
-      fileStore.expandPath(props.node.path)
-    }
-    isNewItem.value = true
-    newItemIsDir.value = true
-    newItemName.value = ''
-    setTimeout(() => newItemInput.value?.focus(), 100)
-  } else {
-    isNewItem.value = true
-    newItemIsDir.value = true
-    newItemName.value = ''
-    setTimeout(() => newItemInput.value?.focus(), 100)
-  }
+  focusNewItemInput(true)
 }
 
+let creating = false
 async function confirmNewItem() {
+  // Enter 与 blur 会先后各触发一次，creating 防止重复创建
+  if (creating) return
   if (!newItemName.value.trim()) {
     isNewItem.value = false
     return
@@ -213,7 +331,13 @@ async function confirmNewItem() {
   const sep = getSep(props.node.path)
   const fullPath = parentPath + sep + newItemName.value.trim()
 
+  creating = true
   try {
+    // 重名预检：SaveFile 对同名文件会静默覆盖，必须先拦
+    if (await CheckPathExists(fullPath)) {
+      ElMessage.error(`同名${newItemIsDir.value ? '文件夹' : '文件'}已存在：${newItemName.value.trim()}`)
+      return
+    }
     if (newItemIsDir.value) {
       await CreateDirectory(fullPath)
     } else {
@@ -235,10 +359,11 @@ async function confirmNewItem() {
   } catch (error) {
     console.error('Failed to create item:', error)
     ElMessage.error(`创建失败: ${error}`)
+  } finally {
+    creating = false
+    isNewItem.value = false
+    newItemName.value = ''
   }
-
-  isNewItem.value = false
-  newItemName.value = ''
 }
 
 function cancelNewItem() {
@@ -270,7 +395,10 @@ function startRename() {
   }, 50)
 }
 
+let renamingBusy = false
 async function confirmRename() {
+  // Enter 与 blur 会先后各触发一次，防止第二次对已不存在的源路径报错
+  if (renamingBusy) return
   if (!renameValue.value.trim() || renameValue.value.trim() === props.node.name) {
     isRenaming.value = false
     return
@@ -280,7 +408,12 @@ async function confirmRename() {
   const sep = getSep(props.node.path)
   const newPath = parentPath + sep + renameValue.value.trim()
 
+  renamingBusy = true
   try {
+    if (await CheckPathExists(newPath)) {
+      ElMessage.error(`同名文件/文件夹已存在：${renameValue.value.trim()}`)
+      return
+    }
     await RenameFile(props.node.path, newPath)
     // Update open tab if this file is open
     const tab = editorStore.getTabByPath(props.node.path)
@@ -292,10 +425,11 @@ async function confirmRename() {
   } catch (error) {
     console.error('Failed to rename:', error)
     ElMessage.error(`重命名失败: ${error}`)
+  } finally {
+    renamingBusy = false
+    isRenaming.value = false
+    renameValue.value = ''
   }
-
-  isRenaming.value = false
-  renameValue.value = ''
 }
 
 function cancelRename() {
@@ -363,17 +497,27 @@ async function handleCopy() {
   const sep = getSep(props.node.path)
   const name = props.node.name
   const dotIndex = name.lastIndexOf('.')
-  let newName: string
-  if (dotIndex > 0) {
-    newName = name.substring(0, dotIndex) + ' - 副本' + name.substring(dotIndex)
-  } else {
-    newName = name + ' - 副本'
+  const base = (i: number) => {
+    const tag = i <= 1 ? '' : String(i)
+    return dotIndex > 0
+      ? name.substring(0, dotIndex) + ' - 副本' + tag + name.substring(dotIndex)
+      : name + ' - 副本' + tag
+  }
+  // 重名自动加序号：副本、副本2、副本3…
+  let newName = base(1)
+  for (let i = 2; i < 100; i++) {
+    let exists = false
+    try { exists = await CheckPathExists(parentPath + sep + newName) } catch { break }
+    if (!exists) break
+    newName = base(i)
   }
   const newPath = parentPath + sep + newName
 
   try {
     if (props.node.isDir) {
-      await CreateDirectory(newPath)
+      // 此前目录"复制"只 CreateDirectory 一个空目录（内容全丢），
+      // 现走后端递归复制
+      await CopyDirectory(props.node.path, newPath)
     } else {
       await CopyFile(props.node.path, newPath)
     }
@@ -490,9 +634,19 @@ onUnmounted(() => {
     <div
       class="file-tree-item flex items-center py-1"
       :style="{ paddingLeft: `${depth * 16 + 8}px` }"
-      :class="{ selected: isSelected }"
+      :class="{
+        selected: isSelected,
+        'is-cut': fileStore.treeClipboard?.cut && fileStore.treeClipboard.path === node.path,
+        'drop-target': dropTargetPath === node.path,
+      }"
+      draggable="true"
       @click="handleClick"
       @contextmenu="handleContextMenu"
+      @dragstart="onDragStart"
+      @dragend="onDragEnd"
+      @dragover="onDragOver"
+      @dragleave="onDragLeave"
+      @drop="onDrop"
     >
       <!-- Expand/collapse icon for directories -->
       <span v-if="node.isDir" class="w-4 h-4 mr-1 flex items-center justify-center">
@@ -518,28 +672,30 @@ onUnmounted(() => {
       <span v-else class="text-sm truncate">{{ node.name }}</span>
     </div>
 
+    <!-- 新建输入行（目录）：独立于 children 渲染——
+         此前藏在 `isExpanded && node.children` 里，空目录 / children 未加载时
+         输入框根本不渲染，表现为"新建一直挂起却看不见" -->
+    <div
+      v-if="isNewItem && node.isDir && isExpanded"
+      class="flex items-center py-1"
+      :style="{ paddingLeft: `${(depth + 1) * 16 + 8}px` }"
+      @click.stop
+    >
+      <span class="w-4 h-4 mr-1"></span>
+      <component :is="newItemIsDir ? Folder : FileText" class="w-4 h-4 mr-2 text-gray-400 flex-shrink-0" />
+      <input
+        ref="newItemInput"
+        v-model="newItemName"
+        class="rename-input"
+        :placeholder="newItemIsDir ? '文件夹名称' : '文件名称'"
+        @keydown.enter="confirmNewItem"
+        @keydown.escape="cancelNewItem"
+        @blur="confirmNewItem"
+      />
+    </div>
+
     <!-- Children (for directories) -->
     <div v-if="node.isDir && isExpanded && node.children">
-      <!-- New item input appears as first child inside the directory -->
-      <div
-        v-if="isNewItem"
-        class="flex items-center py-1"
-        :style="{ paddingLeft: `${(depth + 1) * 16 + 8}px` }"
-        @click.stop
-      >
-        <span class="w-4 h-4 mr-1"></span>
-        <component :is="newItemIsDir ? Folder : FileText" class="w-4 h-4 mr-2 text-gray-400 flex-shrink-0" />
-        <input
-          ref="newItemInput"
-          v-model="newItemName"
-          class="rename-input"
-          :placeholder="newItemIsDir ? '文件夹名称' : '文件名称'"
-          @keydown.enter="confirmNewItem"
-          @keydown.escape="cancelNewItem"
-          @blur="confirmNewItem"
-        />
-      </div>
-
       <FileTree
         v-for="child in node.children"
         :key="child.path"
@@ -587,9 +743,21 @@ onUnmounted(() => {
             <span>新建文件夹</span>
           </div>
           <div class="context-menu-divider"></div>
-          <div class="context-menu-item" @click="handleCopy">
+          <div class="context-menu-item" @click="cutNode">
+            <Scissors class="w-4 h-4 mr-2 text-gray-400" />
+            <span>剪切</span>
+          </div>
+          <div class="context-menu-item" @click="copyNode">
             <Copy class="w-4 h-4 mr-2 text-gray-400" />
             <span>复制</span>
+          </div>
+          <div v-if="fileStore.treeClipboard" class="context-menu-item" @click="pasteNode">
+            <ClipboardPaste class="w-4 h-4 mr-2 text-gray-400" />
+            <span>粘贴到「{{ node.name }}」</span>
+          </div>
+          <div class="context-menu-item" @click="handleCopy">
+            <Copy class="w-4 h-4 mr-2 text-gray-400" />
+            <span>创建副本</span>
           </div>
           <div class="context-menu-item" @click="startRename">
             <Pencil class="w-4 h-4 mr-2 text-gray-400" />
@@ -613,9 +781,21 @@ onUnmounted(() => {
             <span>打开文件</span>
           </div>
           <div class="context-menu-divider"></div>
-          <div class="context-menu-item" @click="handleCopy">
+          <div class="context-menu-item" @click="cutNode">
+            <Scissors class="w-4 h-4 mr-2 text-gray-400" />
+            <span>剪切</span>
+          </div>
+          <div class="context-menu-item" @click="copyNode">
             <Copy class="w-4 h-4 mr-2 text-gray-400" />
             <span>复制</span>
+          </div>
+          <div v-if="fileStore.treeClipboard" class="context-menu-item" @click="pasteNode">
+            <ClipboardPaste class="w-4 h-4 mr-2 text-gray-400" />
+            <span>粘贴到「{{ getParentPath(node.path).split(/[/\\]/).pop() }}」</span>
+          </div>
+          <div class="context-menu-item" @click="handleCopy">
+            <Copy class="w-4 h-4 mr-2 text-gray-400" />
+            <span>创建副本</span>
           </div>
           <div class="context-menu-item" @click="startRename">
             <Pencil class="w-4 h-4 mr-2 text-gray-400" />
@@ -637,16 +817,28 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+/* 剪切待粘贴态：半透明提示，与资源管理器一致 */
+.is-cut {
+  opacity: .45;
+}
+
+/* 拖拽悬停目标文件夹高亮 */
+.drop-target {
+  box-shadow: inset 0 0 0 1px var(--et-accent);
+  background-color: var(--et-accent-soft);
+  border-radius: 3px;
+}
+
 .rename-input {
   width: 100%;
   padding: 1px 4px;
   font-size: 13px;
   line-height: 1.4;
-  border: 1px solid #3b82f6;
+  border: 1px solid var(--et-accent, #3b82f6);
   border-radius: 3px;
   outline: none;
-  background: white;
-  color: #333;
+  background: var(--et-bg, white);
+  color: var(--et-fg, #333);
 }
 
 html.dark .rename-input {

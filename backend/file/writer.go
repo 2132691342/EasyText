@@ -3,6 +3,7 @@ package file
 import (
 	"bytes"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -220,4 +221,63 @@ func CopyFile(src, dst string) error {
 	}
 
 	return nil
+}
+
+// CopyDirectory 递归复制目录及其全部内容到 dst。
+// dst 已存在时报错（不静默合并/覆盖）；dst 的父目录会自动创建。
+func CopyDirectory(src, dst string) error {
+	info, err := os.Stat(src)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return utils.ErrFileNotFound
+		}
+		return utils.WrapError(1002, "无法读取源目录", err)
+	}
+	if !info.IsDir() {
+		return utils.NewAppError(1002, "源路径不是目录", src)
+	}
+	if _, err := os.Stat(dst); err == nil {
+		return utils.NewAppError(1002, "目标已存在", dst)
+	} else if !os.IsNotExist(err) {
+		return utils.WrapError(1002, "无法检查目标路径", err)
+	}
+	if err := os.MkdirAll(dst, info.Mode().Perm()); err != nil {
+		return utils.WrapError(1002, "无法创建目标目录", err)
+	}
+
+	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return utils.WrapError(1002, "遍历源目录失败", err)
+		}
+		if path == src {
+			return nil // 根目录已在 MkdirAll 创建
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return utils.WrapError(1002, "计算相对路径失败", err)
+		}
+		target := filepath.Join(dst, rel)
+		if d.IsDir() {
+			return os.MkdirAll(target, 0755)
+		}
+		return CopyFile(path, target)
+	})
+}
+
+// MovePath 移动文件或目录（跨目录重命名）。
+// 目标已存在时报错——Windows 上 os.Rename 对已存在的普通文件会静默覆盖，
+// 移动操作必须先显式拦截，避免用户拖拽时意外覆盖文件。
+func MovePath(src, dst string) error {
+	if _, err := os.Stat(src); err != nil {
+		if os.IsNotExist(err) {
+			return utils.ErrFileNotFound
+		}
+		return utils.WrapError(1002, "无法读取源路径", err)
+	}
+	if _, err := os.Stat(dst); err == nil {
+		return utils.NewAppError(1002, "目标已存在", dst)
+	} else if !os.IsNotExist(err) {
+		return utils.WrapError(1002, "无法检查目标路径", err)
+	}
+	return RenameFile(src, dst)
 }

@@ -9,6 +9,36 @@ export const useEditorStore = defineStore('editor', () => {
   const activeTabId = ref<string | null>(null)
   const config = ref<AppConfig | null>(null)
 
+  // ============ 分屏视图（参考 notepad++ 双视图模型） ============
+  // tabs 是全局文档列表（Buffer），分屏只是「第二个视图显示哪个文档」的索引。
+  // activeEditorView 决定编辑命令作用于哪个视图（聚焦即切换）。
+  const splitTabId = ref<string | null>(null)
+  const activeEditorView = ref<'main' | 'second'>('main')
+  const splitTab = computed(() => tabs.value.find(t => t.id === splitTabId.value) || null)
+
+  function openTabInSplit(tabId: string) {
+    splitTabId.value = tabId
+    activeEditorView.value = 'main'
+  }
+  function closeSplitView() {
+    splitTabId.value = null
+    activeEditorView.value = 'main'
+  }
+  function toggleSplitView() {
+    if (splitTabId.value) { closeSplitView(); return false }
+    if (activeTabId.value) openTabInSplit(activeTabId.value)
+    return true
+  }
+  function swapSplitView() {
+    if (!splitTabId.value || !activeTabId.value) return
+    const current = activeTabId.value
+    activateTab(splitTabId.value)
+    splitTabId.value = current
+  }
+  function setActiveEditorView(view: 'main' | 'second') {
+    activeEditorView.value = view
+  }
+
   // ============ 书签 ============
   const bookmarksMap = ref<Map<string, Set<number>>>(new Map())
 
@@ -85,6 +115,7 @@ export const useEditorStore = defineStore('editor', () => {
   function closeTab(tabId: string) {
     const index = tabs.value.findIndex(t => t.id === tabId)
     if (index === -1) return
+    if (splitTabId.value === tabId) splitTabId.value = null
     bookmarksMap.value.delete(tabId)
     positionHistory.value.delete(tabId)
     historyIndex.value.delete(tabId)
@@ -98,6 +129,7 @@ export const useEditorStore = defineStore('editor', () => {
 
   function closeAllTabs() {
     tabs.value = []; activeTabId.value = null
+    splitTabId.value = null
     bookmarksMap.value.clear(); positionHistory.value.clear(); historyIndex.value.clear()
   }
 
@@ -326,6 +358,9 @@ export const useEditorStore = defineStore('editor', () => {
   return {
     // State
     tabs, activeTabId, config, bookmarks: bookmarksMap, positionHistory, macroState, findState, clipboardHistory,
+    // Split view
+    splitTabId, activeEditorView, splitTab,
+    openTabInSplit, closeSplitView, toggleSplitView, swapSplitView, setActiveEditorView,
     // Computed
     activeTab, activeTabIndex, dirtyTabs, hasUnsavedChanges,
     // Tab actions

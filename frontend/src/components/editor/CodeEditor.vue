@@ -14,7 +14,7 @@
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import type { EditorTab, Snippet } from '@/types'
+import type { EditorTab, Snippet, MdViewMode } from '@/types'
 import { useEditorStore, useSettingStore } from '@/stores'
 import { AddBookmark, RemoveBookmark, FormatJSON, MinifyJSON, ValidateJSON } from '../../../wailsjs/go/main/App'
 import { EditorView, Decoration, lineNumbers, highlightActiveLine, highlightActiveLineGutter, highlightSpecialChars, rectangularSelection, crosshairCursor, dropCursor } from '@codemirror/view'
@@ -34,11 +34,12 @@ import { useEditorBookmark } from './composables/useEditorBookmark'
 import { useEditorColumnMode } from './composables/useEditorColumnMode'
 import { useEditorMacro } from './composables/useEditorMacro'
 import { useEditorMarkdown } from './composables/useEditorMarkdown'
-import { useEditorKeymap, CMD_ALIASES } from './ext/ext-keymap'
+import { CMD_ALIASES } from './ext/ext-keymap'
 import { useEditorContextMenu, CONTEXT_MENU_SECTIONS } from './ext/ext-context-menu'
 
 // ==================== Props & Store ====================
-const props = defineProps<{ tab: EditorTab }>()
+// viewId：分屏时区分主/副视图；编辑命令只作用于聚焦（activeEditorView）的视图
+const props = withDefaults(defineProps<{ tab: EditorTab; viewId?: 'main' | 'second' }>(), { viewId: 'main' })
 const editorStore = useEditorStore()
 const settingStore = useSettingStore()
 const config = computed(() => settingStore.config)
@@ -65,9 +66,7 @@ const markdown = useEditorMarkdown(
   computed(() => props.tab.content) as any,
   colors as any,
 )
-const keymapExt = useEditorKeymap()
 const contextMenu = useEditorContextMenu()
-
 // ==================== Compartments ====================
 const appearanceCompartment = new Compartment()
 const syntaxHighlightCompartment = new Compartment()
@@ -817,6 +816,11 @@ function createEditor() {
       webAddrCompartment.of(settingStore.config?.ui?.showWebAddr ? [webAddrField] : []),
       markField,
       highlightWordField,
+      // 分屏视图聚焦跟踪：点击/聚焦即切换 activeEditorView，编辑命令只作用于聚焦视图
+      EditorView.domEventHandlers({
+        mousedown: () => { editorStore.setActiveEditorView(props.viewId); return false },
+        focus: () => { editorStore.setActiveEditorView(props.viewId); return false },
+      }),
       EditorView.updateListener.of((update) => {
         if (update.docChanged && !isInitializing) {
           editorStore.updateTabContent(props.tab.id, update.state.doc.toString())
@@ -836,7 +840,7 @@ function createEditor() {
   editorView.value = view
   Promise.resolve().then(() => { isInitializing = false })
 
-  // 文档地图：滚动时同步视口（rAF 节流，原版实现）
+  // 文档地图：滚动时同步视口（rAF 节流，原版实现）+ MD 分屏滚动同步
   const scroller = view.scrollDOM
   let minimapRaf = 0
   const syncMinimap = () => {
@@ -846,6 +850,7 @@ function createEditor() {
       scrollHeight: scroller.scrollHeight,
       clientHeight: scroller.clientHeight,
     }
+    syncMdPreviewFromEditor()
   }
   scroller.addEventListener('scroll', () => {
     if (!minimapRaf) minimapRaf = requestAnimationFrame(syncMinimap)
@@ -909,6 +914,32 @@ function reconfigureAppearance() {
   })
 }
 
+// ==================== MD 分屏滚动同步 ====================
+// 编辑器 ↔ 预览按滚动比例互相同步；mdSyncLock 防止双向回环抖动
+let mdSyncLock = 0
+function syncMdPreviewFromEditor() {
+  const v = editorView.value
+  const p = mdPreviewEl.value
+  if (!v || !p) return
+  if (!markdown.isMarkdown.value || markdown.mdMode.value !== 'split') return
+  if (Date.now() < mdSyncLock) return
+  const denom = v.scrollDOM.scrollHeight - v.scrollDOM.clientHeight
+  const ratio = denom > 0 ? v.scrollDOM.scrollTop / denom : 0
+  const pd = p.scrollHeight - p.clientHeight
+  if (pd > 0) p.scrollTop = ratio * pd
+}
+function onPreviewScroll() {
+  const v = editorView.value
+  const p = mdPreviewEl.value
+  if (!v || !p) return
+  if (!markdown.isMarkdown.value || markdown.mdMode.value !== 'split') return
+  mdSyncLock = Date.now() + 120
+  const denom = p.scrollHeight - p.clientHeight
+  const ratio = denom > 0 ? p.scrollTop / denom : 0
+  const sd = v.scrollDOM.scrollHeight - v.scrollDOM.clientHeight
+  if (sd > 0) v.scrollDOM.scrollTop = ratio * sd
+}
+
 // ==================== 主命令分发 ====================
 function handleEditorCommand(e: Event) {
   const detail = (e as CustomEvent).detail
@@ -918,6 +949,8 @@ function handleEditorCommand(e: Event) {
   else { cmd = detail.cmd; args = detail.args || [] }
   if (!cmd) return
   cmd = CMD_ALIASES[cmd] || cmd
+  // 分屏视图隔离：编辑命令只作用于当前聚焦的视图（单击编辑器即聚焦）
+  if (editorStore.activeEditorView !== props.viewId) return
 
   // 查找词同步（F3 依赖）与批量高亮
   if (cmd === 'set-search-term') { setSearchTerm(String(args[0] ?? '')); return }
@@ -1068,6 +1101,9 @@ function handleEditorCommand(e: Event) {
 const showMinimap = ref(false)
 const minimapViewport = ref({ scrollTop: 0, scrollHeight: 0, clientHeight: 0 })
 
+// MD 三模式（模板 v-for 用）
+const MD_MODES: MdViewMode[] = ['edit', 'split', 'preview']
+
 // ==================== Tab 切换（原版 in-place swap） ====================
 watch(() => props.tab.id, (newId, oldId) => {
   if (!editorView.value) {
@@ -1178,17 +1214,21 @@ defineExpose({
 <template>
   <div class="h-full flex flex-col overflow-hidden">
     <!-- MD toolbar -->
-    <div v-if="markdown.isMarkdown.value" class="flex items-center gap-1 px-3 py-1 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-[#2d2d2d] flex-shrink-0">
-      <span class="text-xs text-gray-400 mr-2">Markdown</span>
-      <button class="px-2 py-0.5 text-xs rounded" :class="markdown.mdMode.value==='edit'?'bg-blue-500 text-white':'text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-600 dark:text-gray-400'" @click="markdown.mdMode.value='edit'">编辑</button>
-      <button class="px-2 py-0.5 text-xs rounded" :class="markdown.mdMode.value==='split'?'bg-blue-500 text-white':'text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-600 dark:text-gray-400'" @click="markdown.mdMode.value='split'">分屏</button>
-      <button class="px-2 py-0.5 text-xs rounded" :class="markdown.mdMode.value==='preview'?'bg-blue-500 text-white':'text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-600 dark:text-gray-400'" @click="markdown.mdMode.value='preview'">预览</button>
-      <span class="flex-1"></span>
-      <button class="px-2 py-0.5 text-xs rounded text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-600 dark:text-gray-400" @click="markdown.exportMdHtml(props.tab)">导出 HTML</button>
+    <div v-if="markdown.isMarkdown.value" class="md-toolbar et-chrome-row et-chrome-sbh">
+      <span class="md-toolbar-label">Markdown</span>
+      <button
+        v-for="m in MD_MODES"
+        :key="m"
+        class="md-mode-btn"
+        :class="{ 'is-on': markdown.mdMode.value === m }"
+        @click="markdown.mdMode.value = m"
+      >{{ m === 'edit' ? '编辑' : m === 'split' ? '分屏' : '预览' }}</button>
+      <span class="flex-1" />
+      <button class="md-mode-btn" title="导出为独立 HTML 文件" @click="markdown.exportMdHtml(props.tab)">导出 HTML</button>
     </div>
 
     <div class="flex-1 flex overflow-hidden" style="position:relative;" @contextmenu="contextMenu.open($event, editorView)" @click="contextMenu.close()">
-      <div ref="editorContainer" :class="{'w-full':!markdown.isMarkdown.value||markdown.mdMode.value==='edit','cm-container-split border-r border-gray-200 dark:border-gray-700':markdown.isMarkdown.value&&markdown.mdMode.value==='split','hidden':markdown.isMarkdown.value&&markdown.mdMode.value==='preview','with-minimap':showMinimap}" class="cm-container" @dblclick="highlightWordAtCursor"></div>
+      <div ref="editorContainer" :class="{'cm-container-split': markdown.isMarkdown.value && markdown.mdMode.value === 'split', 'hidden': markdown.isMarkdown.value && markdown.mdMode.value === 'preview'}" class="cm-container" @dblclick="highlightWordAtCursor"></div>
 
       <!-- 右键菜单（数据驱动：ext-context-menu） -->
       <Teleport to="body">
@@ -1227,7 +1267,7 @@ defineExpose({
       </Teleport>
 
       <!-- MD preview -->
-      <div v-if="markdown.isMarkdown.value && (markdown.mdMode.value==='preview' || markdown.mdMode.value==='split')" class="overflow-auto p-4 bg-white dark:bg-[#1e1e1e] select-text" :class="markdown.mdMode.value==='split' ? 'w-1/2' : 'w-full'" @click="markdown.handlePreviewClick">
+      <div v-if="markdown.isMarkdown.value && (markdown.mdMode.value==='preview' || markdown.mdMode.value==='split')" class="overflow-auto p-4 bg-[var(--et-bg)] select-text" :class="markdown.mdMode.value==='split' ? 'w-1/2' : 'w-full'" @click="markdown.handlePreviewClick" @scroll.passive="onPreviewScroll">
         <div ref="mdPreviewEl" class="markdown-body" v-html="markdown.previewHtml.value"></div>
       </div>
 
@@ -1238,6 +1278,39 @@ defineExpose({
 </template>
 
 <style scoped>
+/* ---- MD 工具条（token 化：编辑 / 分屏 / 预览三模式切换） ---- */
+.md-toolbar {
+  gap: var(--et-space-1);
+  padding: 0 var(--et-space-3);
+}
+.md-toolbar-label {
+  font-size: var(--et-text-xs);
+  color: var(--et-fg-subtle);
+  margin-right: var(--et-space-2);
+  letter-spacing: .02em;
+}
+.md-mode-btn {
+  height: var(--et-h-control-sm);
+  padding: 0 var(--et-space-2);
+  border: 1px solid transparent;
+  border-radius: var(--et-radius-sm);
+  background: transparent;
+  color: var(--et-fg-muted);
+  font-size: var(--et-text-xs);
+  cursor: pointer;
+  transition: background-color 80ms ease, color 80ms ease, border-color 80ms ease;
+  white-space: nowrap;
+}
+.md-mode-btn:hover {
+  background: var(--et-bg-hover);
+  color: var(--et-fg);
+}
+.md-mode-btn.is-on {
+  background: var(--et-accent-soft);
+  border-color: var(--et-accent);
+  color: var(--et-accent);
+}
+
 /* ---- 右键菜单样式（token 化） ---- */
 .context-menu-panel {
   max-height: calc(100vh - 8px);

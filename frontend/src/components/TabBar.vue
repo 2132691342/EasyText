@@ -11,7 +11,7 @@ import {
   X, FileText, XCircle, XSquare, CheckCircle2,
   ChevronsLeft, ChevronsRight,
   Save, ExternalLink, FolderOpen, FileCode, Binary,
-  GitCompare, Copy, Pencil,
+  GitCompare, Copy, Pencil, Columns,
 } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
 import type { EditorTab } from '@/types'
@@ -166,6 +166,21 @@ async function saveAsTab() {
 function openInNewWindow() {
   closeContextMenu()
   ElMessage.info('新窗口打开功能开发中')
+}
+// —— 分屏：把该文档放进第二个视图 / 关闭分屏 ——
+function openInSplit() {
+  closeContextMenu()
+  const tab = editorStore.tabs.find(t => t.id === contextMenu.value.tabId)
+  if (!tab) return
+  if (tab.viewType !== 'code') {
+    ElMessage.warning('当前视图类型不支持分屏')
+    return
+  }
+  editorStore.openTabInSplit(tab.id)
+}
+function closeSplit() {
+  closeContextMenu()
+  editorStore.closeSplitView()
 }
 async function showInExplorer() {
   closeContextMenu()
@@ -439,6 +454,14 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
           <ExternalLink class="ctx-icon" />
           <span>在新窗口中打开</span>
           <span class="ctx-key">未实现</span>
+        </div>
+        <div class="context-menu-item" @click="openInSplit">
+          <Columns class="ctx-icon" />
+          <span>在分屏中打开</span>
+        </div>
+        <div v-if="editorStore.splitTabId" class="context-menu-item" @click="closeSplit">
+          <Columns class="ctx-icon ctx-icon-accent" />
+          <span>关闭分屏</span>
         </div>
         <div class="context-menu-item" @click="showInExplorer">
           <FolderOpen class="ctx-icon" />

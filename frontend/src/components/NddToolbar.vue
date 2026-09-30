@@ -8,7 +8,7 @@
  *  - 溢出折叠：窗口变窄时尾部按钮自动收进「更多」下拉。
  *  - 开关类按钮激活态直接绑定 store/config。
  */
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useEditorStore, useSettingStore } from '@/stores'
 import {
   FileText, FolderOpen, Save, SaveAll, X, XCircle, Radio,
@@ -24,7 +24,7 @@ const props = withDefaults(defineProps<{
   iconSize?: number
   /** tail -f 跟踪中（由 MainLayout 的 useTailWatcher 提供真实状态） */
   tailing?: boolean
-}>(), { iconSize: 14, tailing: false })
+}>(), { iconSize: 16, tailing: false })
 
 const emit = defineEmits<{ (e: 'toolbar-command', cmd: string, ...a: any[]): void }>()
 
@@ -119,28 +119,35 @@ function enabled(it: TItem) {
 const flat = computed(() => GROUPS.flatMap(g => g.items).filter(enabled))
 
 // ---------------- 溢出折叠 ----------------
-const wrapRef  = ref<HTMLElement | null>(null)
-const rightRef = ref<HTMLElement | null>(null)
-const capacity = ref(flat.value.length)
+// 此前用硬编码像素常量估算容量（TB_BTN=26 等），与真实渲染一旦偏差
+// 就出现断行/截断。现改为：在隐藏测量行里渲染全部按钮，累加真实
+// offsetWidth 计算能放下的按钮数量——任何 DPI / 字体 / 图标尺寸下都准。
+const wrapRef    = ref<HTMLElement | null>(null)
+const measureRef = ref<HTMLElement | null>(null)
+const rightRef   = ref<HTMLElement | null>(null)
+const capacity   = ref(flat.value.length)
 let ro: ResizeObserver | null = null
 
-/** Chrome 高度 / 按钮宽度 / 分隔条宽度均来自令牌 */
-const TB_BTN = 26           // 与 .et-icon-btn width 等同
-const TB_GAP = 2            // margin 0 1px × 2 边
-const TB_SEP = 9            // 1px 分隔条 + 4+4 padding
-const TB_MORE_BTN = 28      // 「更多」按钮略宽以容纳箭头
-const TB_PAD = 12           // 容器内边距 6+6
+const TB_PAD = 12           // 容器内边距余量（分隔条 + 「更多」按钮预留）
 
 function recalc() {
-  const wrapW = wrapRef.value?.clientWidth ?? 0
-  if (!wrapW) return
+  const wrap = wrapRef.value
+  const ms = measureRef.value
+  if (!wrap || !ms) return
   const rightW = rightRef.value?.offsetWidth ?? 0
-  const per = TB_BTN + TB_GAP
-  const sepW = GROUPS.length * TB_SEP
-  const moreW = TB_MORE_BTN + TB_PAD
-  const avail = wrapW - rightW - sepW - moreW - TB_PAD
-  capacity.value = Math.max(3, Math.floor(avail / per))
+  const avail = wrap.clientWidth - rightW - TB_PAD
+  let acc = 0
+  let count = 0
+  for (const el of Array.from(ms.children) as HTMLElement[]) {
+    const w = el.offsetWidth
+    if (acc + w > avail) break
+    acc += w
+    if (el.tagName === 'BUTTON') count++
+  }
+  capacity.value = Math.max(3, count)
 }
+
+watch(flat, () => nextTick(recalc))
 
 const visible = computed(() => flat.value.slice(0, capacity.value))
 const hidden  = computed(() => flat.value.slice(capacity.value))
@@ -236,6 +243,16 @@ function hidePop() {
 
 <template>
   <div ref="wrapRef" class="et-chrome-row et-chrome-tool">
+    <!-- 隐藏测量行：渲染全部按钮供 recalc() 读取真实宽度 -->
+    <div ref="measureRef" class="tb-measure" aria-hidden="true">
+      <template v-for="(it, i) in flat" :key="'m-' + it.cmd">
+        <button class="et-icon-btn" tabindex="-1">
+          <component :is="it.icon" :size="iconSize" :stroke-width="1.6" />
+        </button>
+        <span v-if="groupEnds.has(i)" class="tb-sep" />
+      </template>
+    </div>
+
     <template v-for="(it, i) in visible" :key="it.cmd">
       <button
         class="et-icon-btn"
@@ -320,6 +337,25 @@ function hidePop() {
 </template>
 
 <style scoped>
+/* 工具栏容器需要 relative，隐藏测量行的 absolute 定位以它为基准 */
+.et-chrome-tool {
+  position: relative;
+}
+
+/* 隐藏测量行：参与布局计算（offsetWidth）但不可见、不响应事件 */
+.tb-measure {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
 .tb-sep {
   width: 1px;
   height: 18px;

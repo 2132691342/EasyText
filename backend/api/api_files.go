@@ -101,6 +101,29 @@ func (h *Handler) CopyFile(src, dst string) error {
 	return file.CopyFile(src, dst)
 }
 
+// CopyDirectory 递归复制目录及其全部内容；目标已存在时报错
+func (h *Handler) CopyDirectory(src, dst string) error {
+	return file.CopyDirectory(src, dst)
+}
+
+// MoveFile 移动文件或目录（跨目录移动/重命名）；目标已存在时报错，不覆盖
+func (h *Handler) MoveFile(src, dst string) error {
+	return file.MovePath(src, dst)
+}
+
+// CheckPathExists 检查路径是否已存在（前端新建/粘贴前做冲突预检，
+// 避免 SaveFile 对同名文件静默覆盖）
+func (h *Handler) CheckPathExists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, utils.WrapError(1002, "无法检查路径", err)
+}
+
 // IsBinaryFile 检查文件是否为二进制文件
 func (h *Handler) IsBinaryFile(path string) (bool, error) {
 	return h.fileReader.IsBinaryFile(path)
